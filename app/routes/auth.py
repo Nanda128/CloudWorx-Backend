@@ -1,7 +1,6 @@
 from flask import Blueprint, request, jsonify
 from app import db
 from app.models.user import UserLogin, UserKEK
-from app.models.file import File, FileDEK
 import jwt
 import datetime
 import os
