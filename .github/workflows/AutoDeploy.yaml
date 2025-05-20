@@ -1,0 +1,25 @@
+name: Auto Deploy via SCP
+
+on:
+    push:
+        branches:
+            - main
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Copy files via SCP
+              uses: appleboy/scp-action@v1.0.0
+              with:
+                host: ${{ secrets.SCP_HOST }}
+                username: ${{ secrets.SCP_USER }}
+                key: ${{ secrets.SSH_PRIVATE_KEY }}
+                port: ${{ secrets.SCP_PORT }}
+                source: "."
+                target: ${{ secrets.SCP_TARGET_PATH }}
+                rm: true
