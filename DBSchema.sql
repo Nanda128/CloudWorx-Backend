@@ -1,0 +1,60 @@
+CREATE TABLE IF NOT EXISTS user_login (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    auth_password VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX (username),
+    INDEX (email)
+);
+
+CREATE TABLE IF NOT EXISTS user_keys (
+    key_id CHAR(36) NOT NULL PRIMARY KEY,
+    user_id CHAR(36) NOT NULL,
+    salt VARCHAR(255) NOT NULL,
+    n_KEK VARCHAR(255) NOT NULL,
+    c_KEK VARCHAR(255) NOT NULL,
+    d_KEK VARCHAR(255) NOT NULL,
+    p INT NOT NULL,
+    m INT NOT NULL,
+    t INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES user_login(id) ON DELETE CASCADE,
+    INDEX (user_id)
+);
+
+CREATE TABLE IF NOT EXISTS files (
+    file_id CHAR(36) NOT NULL PRIMARY KEY,
+    file_name VARCHAR(255) NOT NULL,
+    n_file VARCHAR(255) NOT NULL,
+    c_file VARCHAR(255) NOT NULL,
+    d_file VARCHAR(255) NOT NULL,
+    created_by CHAR(36) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES user_login(id) ON DELETE CASCADE,
+    INDEX (created_by)
+);
+
+CREATE TABLE IF NOT EXISTS file_shares (
+    share_id CHAR(36) NOT NULL PRIMARY KEY,
+    file_id CHAR(36) NOT NULL,
+    shared_with CHAR(36) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (file_id) REFERENCES files(file_id) ON DELETE CASCADE,
+    FOREIGN KEY (shared_with) REFERENCES user_login(id) ON DELETE CASCADE,
+    UNIQUE KEY (file_id, shared_with),
+    INDEX (shared_with)
+);
+
+CREATE TABLE IF NOT EXISTS file_keys (
+    key_id CHAR(36) NOT NULL PRIMARY KEY,
+    file_id CHAR(36) NOT NULL,
+    salt VARCHAR(255) NOT NULL,
+    n_dek VARCHAR(255) NOT NULL,
+    c_dek VARCHAR(255) NOT NULL,
+    d_dek VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (file_id) REFERENCES files(file_id) ON DELETE CASCADE,
+    INDEX (file_id)
+);
