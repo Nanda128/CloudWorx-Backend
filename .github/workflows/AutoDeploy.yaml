@@ -6,20 +6,34 @@ on:
             - main
 
 jobs:
-    deploy:
-        runs-on: ubuntu-latest
+  deploy:
+    runs-on: ubuntu-latest
 
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-            - name: Copy files via SCP
-              uses: appleboy/scp-action@v1.0.0
-              with:
-                host: ${{ secrets.SCP_HOST }}
-                username: ${{ secrets.SCP_USER }}
-                key: ${{ secrets.SSH_PRIVATE_KEY }}
-                port: ${{ secrets.SCP_PORT }}
-                source: "."
-                target: ${{ secrets.SCP_TARGET_PATH }}
-                rm: true
+      - name: Copy files via SCP
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.SCP_HOST }}
+          username: ${{ secrets.SCP_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SCP_PORT }}
+          source: "."
+          target: ${{ secrets.SCP_TARGET_PATH }}
+          rm: true
+
+      - name: Create venv and install requirements on remote host
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SCP_HOST }}
+          username: ${{ secrets.SCP_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SCP_PORT }}
+          script: |
+            cd ${{ secrets.SCP_TARGET_PATH }}
+            python3 -m venv venv
+            source venv/bin/activate
+            pip install --upgrade pip
+            pip install -r requirements.txt

@@ -1,1 +1,11 @@
-flask >=3.1.1
+flask
+Flask-RESTful
+Flask-SQLAlchemy
+Flask-Migrate
+Flask-CORS
+PyJWT
+cryptography
+argon2-cffi
+gunicorn
+python-dotenv
+mysqlclient
