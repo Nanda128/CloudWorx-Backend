@@ -8,4 +8,3 @@ cryptography
 argon2-cffi
 gunicorn
 python-dotenv
-mysqlclient

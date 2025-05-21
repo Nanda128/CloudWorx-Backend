@@ -3,7 +3,6 @@ from app import db
 from app.models.user import UserLogin, UserKEK
 import jwt
 import datetime
-import os
 import uuid
 import re
 import base64
@@ -11,7 +10,6 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from functools import wraps
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-import secrets
 
 auth_bp = Blueprint('auth', __name__)
 
