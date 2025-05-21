@@ -1,4 +1,4 @@
-import uuid
+import uuid  # noqa: INP001
 from datetime import datetime, timezone
 
 from app import db
@@ -8,7 +8,9 @@ class File(db.Model):
     __tablename__ = "files"
 
     file_id = db.Column(
-        db.String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+        db.String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
     )
     file_name = db.Column(db.String(255), nullable=False)
     iv_file = db.Column(db.String(255), nullable=False)
@@ -22,13 +24,19 @@ class File(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
     dek = db.relationship(
-        "FileDEK", backref="file", uselist=False, cascade="all, delete-orphan"
+        "FileDEK",
+        backref="file",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
     shares = db.relationship(
-        "FileShare", backref="file", lazy=True, cascade="all, delete-orphan"
+        "FileShare",
+        backref="file",
+        lazy=True,
+        cascade="all, delete-orphan",
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<File {self.file_name}>"
 
 
@@ -36,7 +44,9 @@ class FileDEK(db.Model):
     __tablename__ = "file_dek"
 
     key_id = db.Column(
-        db.String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+        db.String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
     )
     file_id = db.Column(
         db.String(36),
@@ -49,5 +59,5 @@ class FileDEK(db.Model):
     assoc_data_dek = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<FileDEK {self.key_id}>"

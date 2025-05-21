@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
@@ -7,7 +9,8 @@ db = SQLAlchemy()
 migrate = Migrate()
 
 
-def create_app(config=None):
+def create_app(config: object | None = None) -> Flask:
+    app = Flask(__name__)
     app = Flask(__name__)
 
     if config:
