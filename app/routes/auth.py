@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from app import db
 from app.models.user import UserLogin, UserKEK
 import jwt
@@ -9,6 +9,9 @@ import re
 import base64
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from functools import wraps
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
+import secrets
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -24,7 +27,7 @@ def token_required(f):
             return jsonify({'message': 'Token is missing!'}), 401
         
         try:
-            jwt_secret = os.environ.get('JWT_SECRET_KEY')
+            jwt_secret = current_app.config['JWT_SECRET_KEY']
             if jwt_secret is None:
                 return jsonify({'message': 'JWT secret key is not set in environment variables!'}), 500
             data = jwt.decode(token, jwt_secret, algorithms=["HS256"])
@@ -97,7 +100,7 @@ def register():
     """
     {
         username: String. The desired username for the new user.
-        auth_password: String. The user's hashed password.
+        auth_password: String. The user's password (plain text).
         email: String. The user's email address (must be valid format).
         salt: String. Base64-encoded salt used for key derivation.
         iv_KEK: String. Base64-encoded initialization vector for encrypting the KEK.
@@ -143,14 +146,33 @@ def register():
     ciphertext = base64.b64decode(data['encrypted_KEK'])
     if not ciphertext:
         return handle_error('Invalid encrypted_KEK format', 400)
+    
+    auth_p = current_app.config['ARGON2_PARALLELISM']
+    auth_m = current_app.config['ARGON2_MEMORY_COST']
+    auth_t = current_app.config['ARGON2_TIME_COST']
+    
+    auth_salt = secrets.token_hex(16)
+    
+    ph = PasswordHasher(
+        time_cost=auth_t,
+        memory_cost=auth_m,
+        parallelism=auth_p,
+        hash_len=32,
+        salt_len=16
+    )
+    auth_password_hash = ph.hash(data['auth_password'], salt=auth_salt.encode())
 
     user_id = str(uuid.uuid4())
     
     new_user = UserLogin(
         id=user_id,
         username=data['username'],
-        auth_password=data['auth_password'],
-        email=data['email']
+        auth_password=auth_password_hash,
+        email=data['email'],
+        auth_salt=auth_salt,
+        auth_p=auth_p,
+        auth_m=auth_m,
+        auth_t=auth_t
     )
     
     new_kek = UserKEK(
@@ -228,7 +250,7 @@ def retrieveFiles():
     except Exception as e:
         return handle_error('Authentication failed: ' + str(e), 401)
     
-    jwt_secret = os.environ.get('JWT_SECRET_KEY')
+    jwt_secret = current_app.config['JWT_SECRET_KEY']
     if jwt_secret is None:
         return handle_error('JWT secret key is not set in environment variables!', 500)
 
@@ -261,7 +283,7 @@ def login():
     """
     {
         username: String. The username of the user.
-        entered_auth_password: String. The new authentication password.
+        entered_auth_password: String. The authentication password.
     }
     """
     data = request.get_json()
@@ -273,10 +295,22 @@ def login():
             return handle_error(f'Missing required field: {field}', 400)
 
     user = UserLogin.query.filter_by(username=data['username']).first()
-    if not user or user.auth_password != data['entered_auth_password']:
+    if not user:
         return handle_error('Invalid username or authentication password!', 401)
     
-    jwt_secret = os.environ.get('JWT_SECRET_KEY')
+    try:
+        ph = PasswordHasher(
+            time_cost=user.auth_t,
+            memory_cost=user.auth_m,
+            parallelism=user.auth_p,
+            hash_len=32,
+            salt_len=16
+        )
+        ph.verify(user.auth_password, data['entered_auth_password'])
+    except VerifyMismatchError:
+        return handle_error('Invalid username or authentication password!', 401)
+    
+    jwt_secret = current_app.config['JWT_SECRET_KEY']
     if jwt_secret is None:
         return handle_error('JWT secret key is not set in environment variables!', 500)
 
@@ -309,26 +343,49 @@ def change_auth_password():
         if field not in data:
             return handle_error(f'Missing required field: {field}', 400)
     
-    base64_fields = ['username', 'old_auth_password', 'new_auth_password']
-    for field in base64_fields:
-        is_valid, error = validate_base64(data[field], field)
-        if not is_valid:
-            return handle_error(error, 400)
-    
     user = UserLogin.query.filter_by(username=data['username']).first()
-    if not user or user.auth_password != data['old_auth_password']:
-        return handle_error('Invalid username or authentication password!', 401)
+    if not user:
+        return handle_error('Invalid username or user not found!', 404)
+    
+    try:
+        ph = PasswordHasher(
+            time_cost=user.auth_t,
+            memory_cost=user.auth_m,
+            parallelism=user.auth_p,
+            hash_len=32,
+            salt_len=16
+        )
+        ph.verify(user.auth_password, data['old_auth_password'])
+    except VerifyMismatchError:
+        return handle_error('Invalid old authentication password!', 401)
     
     if not validate_password_strength(data['new_auth_password'])[0]:
         return handle_error('New authentication password does not meet complexity requirements', 400)
     if data['old_auth_password'] == data['new_auth_password']:
         return handle_error('New authentication password must be different from the old one', 400)
-    if not data['username']:
-        return handle_error('Invalid username or user not found!', 404)
     
-    user.auth_password = data['new_auth_password']
+    auth_p = current_app.config['ARGON2_PARALLELISM']
+    auth_m = current_app.config['ARGON2_MEMORY_COST']
+    auth_t = current_app.config['ARGON2_TIME_COST']
+    auth_salt = secrets.token_hex(16)
+    
+    ph = PasswordHasher(
+        time_cost=auth_t,
+        memory_cost=auth_m,
+        parallelism=auth_p,
+        hash_len=32,
+        salt_len=16
+    )
+    auth_password_hash = ph.hash(data['new_auth_password'], salt=auth_salt.encode())
+    
+    user.auth_password = auth_password_hash
+    user.auth_salt = auth_salt
+    user.auth_p = auth_p
+    user.auth_m = auth_m
+    user.auth_t = auth_t
     
     db.session.commit()
+    
     return jsonify({'message': 'Authentication password changed successfully!'}), 200
 
 @auth_bp.route('/encryption-password', methods=['PUT'])

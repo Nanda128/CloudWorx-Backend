@@ -7,6 +7,10 @@ class UserLogin(db.Model):
     id = db.Column(db.String(36), primary_key=True, nullable=False)
     username = db.Column(db.String(255), unique=True, nullable=False)
     auth_password = db.Column(db.String(255), nullable=False)
+    auth_salt = db.Column(db.String(255), nullable=False)
+    auth_p = db.Column(db.Integer, nullable=False)
+    auth_m = db.Column(db.Integer, nullable=False)
+    auth_t = db.Column(db.Integer, nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     modified_at = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
@@ -15,11 +19,15 @@ class UserLogin(db.Model):
     files = db.relationship('File', backref='owner', lazy=True, foreign_keys='File.created_by')
     shared_files = db.relationship('FileShare', backref='recipient', lazy=True, foreign_keys='FileShare.shared_with')
     
-    def __init__(self, id, username, auth_password, email):
+    def __init__(self, id, username, auth_password, email, auth_salt, auth_p, auth_m, auth_t):
         self.id = id
         self.username = username
         self.auth_password = auth_password
         self.email = email
+        self.auth_salt = auth_salt
+        self.auth_p = auth_p
+        self.auth_m = auth_m
+        self.auth_t = auth_t
     
     def __repr__(self):
         return f'<User {self.username}>'
