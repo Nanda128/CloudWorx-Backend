@@ -97,7 +97,7 @@ def handle_error(error, code=500):
 def register():
     """
     {
-        username: String. The desired username for the new user.
+        username: String. The desired alphanumeric username for the new user.
         auth_password: String. The user's password hashed in Argon2id.
         auth_salt: String. Base64-encoded salt used for key derivation for authentication password.
         auth_argon2id_params: List of three integers. Parameters for Argon2id key derivation (m, p, t).
@@ -122,6 +122,9 @@ def register():
     email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     if not re.match(email_pattern, data['email']):
         return handle_error('Invalid email format', 400)
+    
+    if not re.match(r'^[A-Za-z0-9_-]+$', data['username']):
+        return handle_error('Username can only contain letters, numbers, hyphens, and underscores', 400)
     
     if UserLogin.query.filter_by(username=data['username']).first():
         return handle_error('Username already exists!', 409)
