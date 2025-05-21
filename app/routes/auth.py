@@ -13,6 +13,7 @@ from functools import wraps
 auth_bp = Blueprint('auth', __name__)
 
 def token_required(f):
+    """Decorator to check if the request has a valid JWT token"""
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
@@ -93,6 +94,19 @@ def handle_error(error, code=500):
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
+    """
+    {
+        username: String. The desired username for the new user.
+        auth_password: String. The user's hashed password.
+        email: String. The user's email address (must be valid format).
+        salt: String. Base64-encoded salt used for key derivation.
+        iv_KEK: String. Base64-encoded initialization vector for encrypting the KEK.
+        encrypted_KEK: String. Base64-encoded encrypted Key Encryption Key.
+        verification_code: String. Base64-encoded code for verifying the KEK.
+        verification_iv: String. Base64-encoded IV for the verification code.
+        argon2id_params: List of three integers. Parameters for Argon2id key derivation (m, p, t).
+    }
+    """
     data = request.get_json()
     
     required_fields = ['username', 'auth_password', 'email', 'salt', 'iv_KEK', 
@@ -146,8 +160,8 @@ def register():
         iv_KEK=data['iv_KEK'],
         encrypted_KEK=data['encrypted_KEK'],
         assoc_data_KEK="User Key Encryption Key for " + user_id,
-        p=data['argon2id_params'][0],
-        m=data['argon2id_params'][1],
+        m=data['argon2id_params'][0],
+        p=data['argon2id_params'][1],
         t=data['argon2id_params'][2],
         verification_code=data['verification_code'],
         verification_iv=data['verification_iv']
@@ -159,8 +173,14 @@ def register():
     
     return jsonify({'message': 'User created successfully!', 'user_id': user_id}), 201
 
-@auth_bp.route('/login', methods=['POST'])
-def login():
+@auth_bp.route('/retrieve-files', methods=['POST'])
+def retrieveFiles():
+    """
+    {
+        username: String. The username of the user.
+        password_derived_key: String. The derived key from the user's password with Argon2id.
+    }
+    """
     data = request.get_json()
     
     if 'username' not in data or 'password_derived_key' not in data:
@@ -217,6 +237,54 @@ def login():
         'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
     }, jwt_secret)
     
+    # TODO: Implement file retrieval logic here
+    # For now, we will just return a placeholder response
+    
+    files = [
+        {
+            'file_id': str(uuid.uuid4()),
+            'file_name': 'example.txt',
+            'file_size': 12345,
+            'file_type': 'text/plain'
+        }
+    ]
+    
+    return jsonify({
+        'token': token,
+        'user_id': user.id,
+        'username': user.username,
+        'files': files
+    }), 200
+
+@auth_bp.route('/login', methods=['POST'])
+def login():
+    """
+    {
+        username: String. The username of the user.
+        entered_auth_password: String. The new authentication password.
+    }
+    """
+    data = request.get_json()
+    
+    required_fields = ['username', 'entered_auth_password']
+    
+    for field in required_fields:
+        if field not in data:
+            return handle_error(f'Missing required field: {field}', 400)
+
+    user = UserLogin.query.filter_by(username=data['username']).first()
+    if not user or user.auth_password != data['entered_auth_password']:
+        return handle_error('Invalid username or authentication password!', 401)
+    
+    jwt_secret = os.environ.get('JWT_SECRET_KEY')
+    if jwt_secret is None:
+        return handle_error('JWT secret key is not set in environment variables!', 500)
+
+    token = jwt.encode({
+        'user_id': user.id,
+        'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+    }, jwt_secret)
+    
     return jsonify({
         'token': token,
         'user_id': user.id,
@@ -226,6 +294,13 @@ def login():
 @auth_bp.route('/auth-password', methods=['PUT'])
 @token_required
 def change_auth_password():
+    """
+    {
+        username: String. The username of the user.
+        old_auth_password: String. The user's old authentication password.
+        new_auth_password: String. The user's new authentication password.
+    }
+    """
     data = request.get_json()
     
     required_fields = ['username', 'old_auth_password', 'new_auth_password']
@@ -259,11 +334,24 @@ def change_auth_password():
 @auth_bp.route('/encryption-password', methods=['PUT'])
 @token_required
 def change_encryption_password():
+    """
+    {
+        username: String. The username of the user.
+        old_password_derived_key: String. The derived key from the user's old password with Argon2id.
+        new_password_derived_key: String. The derived key from the user's new password with Argon2id.
+        new_salt: String. Base64-encoded salt used for key derivation.
+        new_iv_KEK: String. Base64-encoded initialization vector for encrypting the KEK.
+        new_encrypted_KEK: String. Base64-encoded encrypted Key Encryption Key.
+        new_verification_code: String. Base64-encoded code for verifying the KEK.
+        new_verification_iv: String. Base64-encoded IV for the verification code.
+        new_argon2id_params: List of three integers. Parameters for Argon2id key derivation (m, p, t).
+    }
+    """
     data = request.get_json()
     
     required_fields = ['username', 'old_password_derived_key', 'new_password_derived_key', 'new_salt', 
                         'new_iv_KEK', 'new_encrypted_KEK', 'new_verification_code', 
-                        'new_verification_iv', 'new_argon2id_params', 're_encrypted_deks']
+                        'new_verification_iv', 'new_argon2id_params']
     
     user = UserLogin.query.filter_by(username=data['username']).first()
     if not user:
