@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from flask import Blueprint, current_app, jsonify, request
 
 from app import db
+from app.models.file import File, FileDEK
 from app.models.user import UserKEK, UserLogin
 
 auth_bp = Blueprint("auth", __name__)
@@ -113,6 +114,7 @@ def validate_argon2id_params(params: list) -> tuple[bool, str]:
 def handle_error(error: Exception, code: int = 500) -> tuple:
     """Handle errors and return a JSON response"""
     return jsonify({"message": str(error)}), code
+
 
 def check_fields(
     data: dict,
@@ -273,14 +275,14 @@ def get_user_and_kek(username: str) -> tuple[UserLogin | None, UserKEK | None, s
     return user, kek_data, None
 
 
-def verify_password_and_kek(password_derived_key: str, kek_data: UserKEK) -> tuple[bytes | None, str | None]:
+def verify_password_and_kek(password_derived_key: str, kek_data: UserKEK) -> str | None:
     try:
         password_key = base64.b64decode(password_derived_key)
     except (binascii.Error, ValueError) as e:
-        return None, "Authentication failed: " + str(e)
+        return "Authentication failed: " + str(e)
 
     if not kek_data.encrypted_kek or not kek_data.iv_kek:
-        return None, "Missing KEK or IV for user!"
+        return "Missing KEK or IV for user!"
 
     try:
         encrypted_kek = base64.b64decode(kek_data.encrypted_kek)
@@ -288,7 +290,7 @@ def verify_password_and_kek(password_derived_key: str, kek_data: UserKEK) -> tup
         aesgcm = AESGCM(password_key)
         kek = aesgcm.decrypt(iv_kek, encrypted_kek, None)
     except (binascii.Error, ValueError, AttributeError):
-        return None, "Invalid password!"
+        return "Invalid password!"
 
     try:
         verification_iv = base64.b64decode(kek_data.verification_iv)
@@ -296,11 +298,58 @@ def verify_password_and_kek(password_derived_key: str, kek_data: UserKEK) -> tup
         aesgcm = AESGCM(kek)
         plaintext = aesgcm.decrypt(verification_iv, verification_code, None)
         if plaintext.decode("utf-8") != "VERIFICATION_SUCCESS":
-            return None, "Invalid password!"
+            return "Invalid password!"
     except (binascii.Error, ValueError, AttributeError):
-        return None, "Invalid password!"
+        return "Invalid password!"
 
-    return kek, None
+    return None
+
+
+def decrypt_user_files(user: UserLogin, kek_data: UserKEK, password_derived_key: str) -> list[dict]:
+    """Decrypt all files for a user using their password-derived-key and KEK"""
+    password_key = base64.b64decode(password_derived_key)
+    encrypted_kek = base64.b64decode(kek_data.encrypted_kek)
+    iv_kek = base64.b64decode(kek_data.iv_kek)
+    aesgcm_kek = AESGCM(password_key)
+    kek = aesgcm_kek.decrypt(iv_kek, encrypted_kek, None)
+
+    files = File.query.filter_by(created_by=user.id).all()
+    file_ids = [f.file_id for f in files]
+    if not file_ids:
+        return []
+
+    deks = FileDEK.query.filter(
+        db.or_(*[FileDEK.file_id == file_id for file_id in file_ids]),
+    ).all()
+    dek_map = {dek.file_id: dek for dek in deks}
+
+    decrypted_files = []
+    for file in files:
+        dek = dek_map.get(file.file_id)
+        if not dek:
+            continue
+
+        encrypted_dek = base64.b64decode(dek.encrypted_dek)
+        iv_dek = base64.b64decode(dek.iv_dek)
+        aesgcm_dek = AESGCM(kek)
+        dek_bytes = aesgcm_dek.decrypt(iv_dek, encrypted_dek, None)
+
+        iv_file = base64.b64decode(file.iv_file)
+        aesgcm_file = AESGCM(dek_bytes)
+        try:
+            decrypted_content = aesgcm_file.decrypt(iv_file, file.encrypted_file, None)
+        except (binascii.Error, ValueError, AttributeError):
+            decrypted_content = None
+
+        decrypted_files.append(
+            {
+                "file_id": file.file_id,
+                "file_name": file.file_name,
+                "decrypted_content": base64.b64encode(decrypted_content).decode("utf-8") if decrypted_content else None,
+                "created_at": file.created_at.isoformat() if hasattr(file, "created_at") else None,
+            },
+        )
+    return decrypted_files
 
 
 @auth_bp.route("/retrieve-files", methods=["POST"])
@@ -319,7 +368,7 @@ def retrieve_files() -> tuple:
     if user is None or kek_data is None:
         return handle_error(Exception("User not found!" if user is None else "User KEK not found!"), 404)
 
-    kek, error = verify_password_and_kek(data["password_derived_key"], kek_data)
+    error = verify_password_and_kek(data["password_derived_key"], kek_data)
     if error:
         return handle_error(Exception(error), 401 if "password" in error else 500)
 
@@ -335,20 +384,10 @@ def retrieve_files() -> tuple:
         jwt_secret,
     )
 
-    # TODO (Nanda): Implement file retrieval logic here
-    # For now, we will just return a placeholder response
-
-    files = [
-        {
-            "file_id": str(uuid.uuid4()),
-            "file_name": "example.txt",
-            "file_size": 12345,
-            "file_type": "text/plain",
-        },
-    ]
+    decrypted_files = decrypt_user_files(user, kek_data, data["password_derived_key"])
 
     return jsonify(
-        {"token": token, "user_id": user.id, "username": user.username, "files": files},
+        {"token": token, "user_id": user.id, "username": user.username, "files": decrypted_files},
     ), 200
 
 
@@ -540,3 +579,49 @@ def _verify_old_encryption_password(data: dict, kek_data: UserKEK) -> str | None
     except (binascii.Error, ValueError, AttributeError) as e:
         return "Authentication failed: " + str(e)
     return None
+
+
+@auth_bp.route("/<user_id>", methods=["DELETE"])
+def delete_user(user_id: str) -> tuple:
+    """Delete a user and their KEK after verifying password"""
+    data = request.get_json()
+    if not data or "password" not in data:
+        return handle_error(Exception("Missing required field: password"), 400)
+
+    user = UserLogin.query.filter_by(id=user_id).first()
+    if not user:
+        return handle_error(Exception("User not found!"), 404)
+
+    try:
+        ph = PasswordHasher(
+            time_cost=user.auth_t,
+            memory_cost=user.auth_m,
+            parallelism=user.auth_p,
+            hash_len=32,
+            salt_len=16,
+        )
+        ph.verify(user.auth_password, data["password"])
+    except VerifyMismatchError:
+        return handle_error(Exception("Invalid password!"), 401)
+
+    kek = UserKEK.query.filter_by(user_id=user_id).first()
+    if kek:
+        db.session.delete(kek)
+    db.session.delete(user)
+    db.session.commit()
+
+    return jsonify({"message": "User deleted successfully!"}), 200
+
+
+@auth_bp.route("/user-id", methods=["POST"])
+def get_user_id() -> tuple:
+    """Return the user_id for a given username"""
+    data = request.get_json()
+    if not data or "username" not in data:
+        return handle_error(Exception("Missing required field: username"), 400)
+
+    user = UserLogin.query.filter_by(username=data["username"]).first()
+    if not user:
+        return handle_error(Exception("User not found!"), 404)
+
+    return jsonify({"user_id": user.id}), 200

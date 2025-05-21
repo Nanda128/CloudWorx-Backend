@@ -1,4 +1,4 @@
-import uuid  # noqa: INP001
+from dataclasses import dataclass  # noqa: INP001
 from datetime import datetime, timezone
 
 from app import db
@@ -10,7 +10,7 @@ class File(db.Model):
     file_id = db.Column(
         db.String(36),
         primary_key=True,
-        default=lambda: str(uuid.uuid4()),
+        nullable=False,
     )
     file_name = db.Column(db.String(255), nullable=False)
     iv_file = db.Column(db.String(255), nullable=False)
@@ -36,6 +36,27 @@ class File(db.Model):
         cascade="all, delete-orphan",
     )
 
+    @dataclass
+    class FileParams:
+        file_id: str
+        file_name: str
+        iv_file: str
+        encrypted_file: bytes
+        assoc_data_file: str
+
+    def __init__(
+        self,
+        file_params: "File.FileParams",
+        created_by: str,
+    ) -> None:
+        self.file_id = file_params.file_id
+        self.file_name = file_params.file_name
+        self.iv_file = file_params.iv_file
+        self.encrypted_file = file_params.encrypted_file
+        self.assoc_data_file = file_params.assoc_data_file
+        self.created_by = created_by
+        self.created_at = datetime.now(timezone.utc)
+
     def __repr__(self) -> str:
         return f"<File {self.file_name}>"
 
@@ -46,7 +67,7 @@ class FileDEK(db.Model):
     key_id = db.Column(
         db.String(36),
         primary_key=True,
-        default=lambda: str(uuid.uuid4()),
+        nullable=False,
     )
     file_id = db.Column(
         db.String(36),
@@ -58,6 +79,27 @@ class FileDEK(db.Model):
     encrypted_dek = db.Column(db.String(255), nullable=False)
     assoc_data_dek = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+
+    @dataclass
+    class DEKParams:
+        salt: str
+        iv_dek: str
+        encrypted_dek: str
+        assoc_data_dek: str
+
+    def __init__(
+        self,
+        key_id: str,
+        file_id: str,
+        dek_params: "FileDEK.DEKParams",
+    ) -> None:
+        self.key_id = key_id
+        self.file_id = file_id
+        self.salt = dek_params.salt
+        self.iv_dek = dek_params.iv_dek
+        self.encrypted_dek = dek_params.encrypted_dek
+        self.assoc_data_dek = dek_params.assoc_data_dek
+        self.created_at = datetime.now(timezone.utc)
 
     def __repr__(self) -> str:
         return f"<FileDEK {self.key_id}>"

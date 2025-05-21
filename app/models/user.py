@@ -1,4 +1,5 @@
-from datetime import datetime, timezone  # noqa: INP001
+from dataclasses import dataclass  # noqa: INP001
+from datetime import datetime, timezone
 from typing import NamedTuple
 
 from app import db
@@ -23,10 +24,16 @@ class UserLogin(db.Model):
     )
 
     kek = db.relationship(
-        "UserKEK", backref="user", uselist=False, cascade="all, delete-orphan",
+        "UserKEK",
+        backref="user",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
     files = db.relationship(
-        "File", backref="owner", lazy=True, foreign_keys="File.created_by",
+        "File",
+        backref="owner",
+        lazy=True,
+        foreign_keys="File.created_by",
     )
     shared_files = db.relationship(
         "FileShare",
@@ -34,8 +41,6 @@ class UserLogin(db.Model):
         lazy=True,
         foreign_keys="FileShare.shared_with",
     )
-
-    from dataclasses import dataclass
 
     @dataclass
     class AuthParams:
@@ -46,7 +51,11 @@ class UserLogin(db.Model):
         t: int
 
     def __init__(
-        self, user_id: str, username: str, email: str, auth_params: "UserLogin.AuthParams",
+        self,
+        user_id: str,
+        username: str,
+        email: str,
+        auth_params: "UserLogin.AuthParams",
     ) -> None:
         self.id = user_id
         self.username = username
@@ -59,6 +68,7 @@ class UserLogin(db.Model):
 
     def __repr__(self) -> str:
         return f"<User {self.username}>"
+
 
 class UserKEK(db.Model):
     __tablename__ = "user_kek"
