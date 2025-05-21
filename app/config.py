@@ -11,6 +11,3 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = 3600
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024
-    ARGON2_PARALLELISM = int(os.environ.get('ARGON2_PARALLELISM', 1))
-    ARGON2_MEMORY_COST = int(os.environ.get('ARGON2_MEMORY_COST', 12288))
-    ARGON2_TIME_COST = int(os.environ.get('ARGON2_TIME_COST', 3))

@@ -100,9 +100,11 @@ def register():
     """
     {
         username: String. The desired username for the new user.
-        auth_password: String. The user's password (plain text).
+        auth_password: String. The user's password hashed in Argon2id.
+        auth_salt: String. Base64-encoded salt used for key derivation for authentication password.
+        auth_argon2id_params: List of three integers. Parameters for Argon2id key derivation (m, p, t).
         email: String. The user's email address (must be valid format).
-        salt: String. Base64-encoded salt used for key derivation.
+        salt: String. Base64-encoded salt used for key derivation for encryption password.
         iv_KEK: String. Base64-encoded initialization vector for encrypting the KEK.
         encrypted_KEK: String. Base64-encoded encrypted Key Encryption Key.
         verification_code: String. Base64-encoded code for verifying the KEK.
@@ -113,7 +115,8 @@ def register():
     data = request.get_json()
     
     required_fields = ['username', 'auth_password', 'email', 'salt', 'iv_KEK', 
-                        'encrypted_KEK', 'verification_code', 'verification_iv', 'argon2id_params']
+                        'encrypted_KEK', 'verification_code', 'verification_iv', 
+                        'argon2id_params', 'auth_argon2id_params', 'auth_salt']
     for field in required_fields:
         if field not in data or not data[field]:
             return handle_error(f'Missing required field: {field}', 400)
@@ -128,7 +131,7 @@ def register():
     if UserLogin.query.filter_by(email=data['email']).first():
         return handle_error('Email already exists!', 409)
     
-    base64_fields = ['salt', 'iv_KEK', 'encrypted_KEK', 'verification_code', 'verification_iv']
+    base64_fields = ['salt', 'iv_KEK', 'encrypted_KEK', 'verification_code', 'verification_iv', 'auth_salt']
     for field in base64_fields:
         is_valid, error = validate_base64(data[field], field)
         if not is_valid:
@@ -139,40 +142,26 @@ def register():
         if not is_valid:
             return handle_error(error, 400)
     
-    is_valid, error = validate_argon2id_params(data['argon2id_params'])
-    if not is_valid:
-        return handle_error(error, 400)
+    for field in ['auth_argon2id_params', 'argon2id_params']:
+        is_valid, error = validate_argon2id_params(data[field])
+        if not is_valid:
+            return handle_error(error, 400)
 
     ciphertext = base64.b64decode(data['encrypted_KEK'])
     if not ciphertext:
         return handle_error('Invalid encrypted_KEK format', 400)
-    
-    auth_p = current_app.config['ARGON2_PARALLELISM']
-    auth_m = current_app.config['ARGON2_MEMORY_COST']
-    auth_t = current_app.config['ARGON2_TIME_COST']
-    
-    auth_salt = secrets.token_hex(16)
-    
-    ph = PasswordHasher(
-        time_cost=auth_t,
-        memory_cost=auth_m,
-        parallelism=auth_p,
-        hash_len=32,
-        salt_len=16
-    )
-    auth_password_hash = ph.hash(data['auth_password'], salt=auth_salt.encode())
 
     user_id = str(uuid.uuid4())
     
     new_user = UserLogin(
         id=user_id,
         username=data['username'],
-        auth_password=auth_password_hash,
+        auth_password=data['auth_password'],
         email=data['email'],
-        auth_salt=auth_salt,
-        auth_p=auth_p,
-        auth_m=auth_m,
-        auth_t=auth_t
+        auth_salt=data['auth_salt'],
+        auth_m=data['auth_argon2id_params'][0],
+        auth_p=data['auth_argon2id_params'][1],
+        auth_t=data['auth_argon2id_params'][2],
     )
     
     new_kek = UserKEK(
@@ -283,20 +272,19 @@ def login():
     """
     {
         username: String. The username of the user.
-        entered_auth_password: String. The authentication password.
+        entered_auth_password: String. The authentication password hashed in Argon2id.
     }
     """
     data = request.get_json()
     
     required_fields = ['username', 'entered_auth_password']
-    
     for field in required_fields:
         if field not in data:
             return handle_error(f'Missing required field: {field}', 400)
 
     user = UserLogin.query.filter_by(username=data['username']).first()
     if not user:
-        return handle_error('Invalid username or authentication password!', 401)
+        return handle_error('Invalid username!', 404)
     
     try:
         ph = PasswordHasher(
@@ -308,7 +296,7 @@ def login():
         )
         ph.verify(user.auth_password, data['entered_auth_password'])
     except VerifyMismatchError:
-        return handle_error('Invalid username or authentication password!', 401)
+        return handle_error('Invalid authentication password!', 401)
     
     jwt_secret = current_app.config['JWT_SECRET_KEY']
     if jwt_secret is None:
@@ -332,13 +320,14 @@ def change_auth_password():
     {
         username: String. The username of the user.
         old_auth_password: String. The user's old authentication password.
-        new_auth_password: String. The user's new authentication password.
+        new_auth_password: String. The user's new authentication password (already Argon2id-hashed).
+        new_auth_salt: String. Base64-encoded salt used for Argon2id hashing of the new authentication password.
+        new_auth_argon2id_params: List of three integers. Parameters for Argon2id key derivation (m, p, t).
     }
     """
     data = request.get_json()
     
-    required_fields = ['username', 'old_auth_password', 'new_auth_password']
-    
+    required_fields = ['username', 'old_auth_password', 'new_auth_password', 'new_auth_salt', 'new_auth_argon2id_params']
     for field in required_fields:
         if field not in data:
             return handle_error(f'Missing required field: {field}', 400)
@@ -359,30 +348,22 @@ def change_auth_password():
     except VerifyMismatchError:
         return handle_error('Invalid old authentication password!', 401)
     
-    if not validate_password_strength(data['new_auth_password'])[0]:
-        return handle_error('New authentication password does not meet complexity requirements', 400)
     if data['old_auth_password'] == data['new_auth_password']:
         return handle_error('New authentication password must be different from the old one', 400)
     
-    auth_p = current_app.config['ARGON2_PARALLELISM']
-    auth_m = current_app.config['ARGON2_MEMORY_COST']
-    auth_t = current_app.config['ARGON2_TIME_COST']
-    auth_salt = secrets.token_hex(16)
+    is_valid, error = validate_base64(data['new_auth_salt'], 'new_auth_salt')
+    if not is_valid:
+        return handle_error(error, 400)
     
-    ph = PasswordHasher(
-        time_cost=auth_t,
-        memory_cost=auth_m,
-        parallelism=auth_p,
-        hash_len=32,
-        salt_len=16
-    )
-    auth_password_hash = ph.hash(data['new_auth_password'], salt=auth_salt.encode())
+    is_valid, error = validate_argon2id_params(data['new_auth_argon2id_params'])
+    if not is_valid:
+        return handle_error(error, 400)
     
-    user.auth_password = auth_password_hash
-    user.auth_salt = auth_salt
-    user.auth_p = auth_p
-    user.auth_m = auth_m
-    user.auth_t = auth_t
+    user.auth_password = data['new_auth_password']
+    user.auth_salt = data['new_auth_salt']
+    user.auth_m = data['new_auth_argon2id_params'][0]
+    user.auth_p = data['new_auth_argon2id_params'][1]
+    user.auth_t = data['new_auth_argon2id_params'][2]
     
     db.session.commit()
     
