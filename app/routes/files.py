@@ -4,7 +4,7 @@ from functools import wraps
 from typing import Any, Callable
 
 import jwt
-from flask import Blueprint, Request, current_app, jsonify, request, send_file
+from flask import Blueprint, Request, current_app, jsonify, request, send_file, escape
 from flask.wrappers import Response
 from werkzeug.utils import secure_filename
 
@@ -177,6 +177,7 @@ def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any,
             file_name = request.form.get("file_name")
             if not file_name:
                 file_name = secure_filename(file.filename or "")
+            file_name = escape(file_name)
 
             iv_file = request.form.get("iv_file")
             assoc_data_file = request.form.get("assoc_data_file")
