@@ -4,8 +4,9 @@ from functools import wraps
 from typing import Any, Callable
 
 import jwt
-from flask import Blueprint, Request, current_app, jsonify, request, send_file, escape
+from flask import Blueprint, Request, current_app, jsonify, request, send_file
 from flask.wrappers import Response
+from markupsafe import escape
 from werkzeug.utils import secure_filename
 
 from app import db

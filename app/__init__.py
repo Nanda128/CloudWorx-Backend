@@ -23,12 +23,11 @@ def create_app(config: object | None = None) -> Flask:
     CORS(app)
 
     from app.routes.auth import auth_bp
-
     from app.routes.files import files_bp
     # from app.routes.shares import shares_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
-    app.register_blueprint(files_bp, url_prefix='/api/files')
+    app.register_blueprint(files_bp, url_prefix="/api/files")
     # app.register_blueprint(shares_bp, url_prefix='/api/shares')
 
     return app
