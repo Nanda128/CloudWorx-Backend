@@ -9,3 +9,4 @@ argon2-cffi
 gunicorn
 python-dotenv
 flask-restx
+pymysql

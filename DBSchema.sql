@@ -27,7 +27,7 @@ CREATE TABLE
         file_id CHAR(36) NOT NULL PRIMARY KEY,
         file_name VARCHAR(255) NOT NULL,
         iv_file VARCHAR(255) NOT NULL,
-        encrypted_file VARCHAR(255) NOT NULL,
+        encrypted_file LONGBLOB NOT NULL,
         assoc_data_file VARCHAR(255) NOT NULL,
         created_by CHAR(36) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

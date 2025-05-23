@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
@@ -22,6 +24,10 @@ def create_app(config: object | None = None) -> Flask:
 
     if config:
         app.config.from_object(config)
+    elif os.environ.get("USE_LOCAL_CONFIG", "0") == "1":
+        from app.config import LocalConfig
+
+        app.config.from_object(LocalConfig)
     else:
         app.config.from_object("app.config.Config")
 

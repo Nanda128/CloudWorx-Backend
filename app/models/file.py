@@ -14,7 +14,7 @@ class File(db.Model):
     )
     file_name = db.Column(db.String(255), nullable=False)
     iv_file = db.Column(db.String(255), nullable=False)
-    encrypted_file = db.Column(db.LargeBinary, nullable=False)
+    encrypted_file = db.Column(db.LargeBinary(length=(2**32) - 1), nullable=False)  # MySQL LONGBLOB
     assoc_data_file = db.Column(db.String(255), nullable=False)
     created_by = db.Column(
         db.String(36),
