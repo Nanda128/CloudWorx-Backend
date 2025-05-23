@@ -8,6 +8,8 @@ The other two repositories are:
 - [CloudWorx-Client led by @Elle0-0](https://github.com/Elle0-0/CloudWorx-Desktop-Client)
 - [CloudWorx-Web led by @darragh0](https://github.com/darragh0/CloudWorx-WApp)
 
+![CloudWorx Logo](cloudworx-logo.png)
+
 ## Virtual Environment Setup
 
 1. Create a virtual environment:
