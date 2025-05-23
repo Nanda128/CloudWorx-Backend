@@ -14,12 +14,14 @@ from argon2.exceptions import VerifyMismatchError
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from flask import Blueprint, current_app, jsonify, request
+from flask_restx import Namespace, Resource, fields
 
 from app import db
 from app.models.file import File, FileDEK
 from app.models.user import UserKEK, UserLogin
 
 auth_bp = Blueprint("auth", __name__)
+auth_ns = Namespace("auth", description="Authentication and user management")
 
 MIN_PASSWORD_LENGTH = 12
 IV_BYTE_LENGTH = 12
@@ -124,6 +126,7 @@ def check_email_and_username(email: str, username: str) -> str | None:
         return "Username already exists!"
     return None
 
+
 def validate_register_data(data: dict) -> str | None:
     error = check_fields(
         data,
@@ -144,34 +147,101 @@ def validate_register_data(data: dict) -> str | None:
     return None
 
 
-@auth_bp.route("/register", methods=["POST"])
-def register() -> tuple:
-    """Register a new user"""
-    data = request.get_json()
+register_model = auth_ns.model(
+    "Register",
+    {
+        "username": fields.String(required=True),
+        "auth_password": fields.String(required=True),
+        "email": fields.String(required=True),
+        "iv_KEK": fields.String(required=True, description="Base64-encoded IV"),
+        "encrypted_KEK": fields.String(required=True, description="Base64-encoded KEK"),
+    },
+)
 
-    error = validate_register_data(data)
-    if error:
-        return handle_error(Exception(error), 400 if error != "Username already exists!" else 409)
+login_model = auth_ns.model(
+    "Login",
+    {
+        "username": fields.String(required=True),
+        "entered_auth_password": fields.String(required=True),
+    },
+)
 
-    user_id = str(uuid.uuid4())
+retrieve_files_model = auth_ns.model(
+    "RetrieveFiles",
+    {
+        "username": fields.String(required=True),
+        "password_derived_key": fields.String(required=True),
+    },
+)
 
-    new_user = UserLogin(user_id, data["username"], data["email"], data["auth_password"])
+change_auth_password_model = auth_ns.model(
+    "ChangeAuthPassword",
+    {
+        "username": fields.String(required=True),
+        "old_auth_password": fields.String(required=True),
+        "new_auth_password": fields.String(required=True),
+    },
+)
 
-    new_kek = UserKEK(
-        key_id=str(uuid.uuid4()),
-        user_id=user_id,
-        kek_params=UserKEK.KEKParams(
-            iv_kek=data["iv_KEK"],
-            encrypted_kek=data["encrypted_KEK"],
-            assoc_data_kek=f"User Key Encryption Key for {user_id}",
-        ),
-    )
+change_encryption_password_model = auth_ns.model(
+    "ChangeEncryptionPassword",
+    {
+        "username": fields.String(required=True),
+        "old_password_derived_key": fields.String(required=True),
+        "new_password_derived_key": fields.String(required=True),
+        "new_iv_KEK": fields.String(required=True),
+        "new_encrypted_KEK": fields.String(required=True),
+    },
+)
 
-    db.session.add(new_user)
-    db.session.add(new_kek)
-    db.session.commit()
+delete_user_model = auth_ns.model(
+    "DeleteUser",
+    {
+        "password": fields.String(required=True),
+    },
+)
 
-    return jsonify({"message": "User created successfully!", "user_id": user_id}), 201
+user_id_model = auth_ns.model(
+    "GetUserId",
+    {
+        "username": fields.String(required=True),
+    },
+)
+
+
+@auth_ns.route("/register")
+class Register(Resource):
+    @auth_ns.expect(register_model)
+    @auth_ns.response(201, "User created successfully!")
+    @auth_ns.response(400, "Validation error")
+    @auth_ns.response(409, "Username already exists!")
+    def post(self) -> object:
+        """Register a new user"""
+        data = request.get_json()
+
+        error = validate_register_data(data)
+        if error:
+            return handle_error(Exception(error), 400 if error != "Username already exists!" else 409)
+
+        user_id = str(uuid.uuid4())
+
+        new_user = UserLogin(user_id, data["username"], data["email"], data["auth_password"])
+
+        new_kek = UserKEK(
+            key_id=str(uuid.uuid4()),
+            user_id=user_id,
+            kek_params=UserKEK.KEKParams(
+                iv_kek=data["iv_KEK"],
+                encrypted_kek=data["encrypted_KEK"],
+                assoc_data_kek=f"User Key Encryption Key for {user_id}",
+            ),
+        )
+
+        db.session.add(new_user)
+        db.session.add(new_kek)
+        db.session.commit()
+
+        return jsonify({"message": "User created successfully!", "user_id": user_id}), 201
 
 
 def validate_retrieve_files_data(data: dict) -> str | None:
@@ -255,173 +325,207 @@ def decrypt_user_files(user: UserLogin, kek_data: UserKEK, password_derived_key:
     return decrypted_files
 
 
-@auth_bp.route("/retrieve-files", methods=["POST"])
-def retrieve_files() -> tuple:
-    """Retrieve files for a user"""
-    data = request.get_json()
+@auth_ns.route("/retrieve-files")
+class RetrieveFiles(Resource):
+    @auth_ns.expect(retrieve_files_model)
+    @auth_ns.response(200, "Files retrieved")
+    @auth_ns.response(400, "Validation error")
+    @auth_ns.response(404, "User not found")
+    def post(self) -> object:
+        """Retrieve files for a user"""
+        data = request.get_json()
 
-    error = validate_retrieve_files_data(data)
-    if error:
-        return handle_error(Exception(error), 400)
+        error = validate_retrieve_files_data(data)
+        if error:
+            return handle_error(Exception(error), 400)
 
-    user, kek_data, error = get_user_and_kek(data["username"])
-    if error:
-        return handle_error(Exception(error), 404)
+        user, kek_data, error = get_user_and_kek(data["username"])
+        if error:
+            return handle_error(Exception(error), 404)
 
-    if not user or not kek_data:
-        return handle_error(Exception("User not found!" if not user else "User KEK not found!"), 404)
+        if not user or not kek_data:
+            return handle_error(Exception("User not found!" if not user else "User KEK not found!"), 404)
 
-    error = verify_password_and_kek(data["password_derived_key"], kek_data)
-    if error:
-        return handle_error(Exception(error), 401 if "password" in error else 500)
+        error = verify_password_and_kek(data["password_derived_key"], kek_data)
+        if error:
+            return handle_error(Exception(error), 401 if "password" in error else 500)
 
-    jwt_secret = current_app.config["JWT_SECRET_KEY"]
-    if not jwt_secret:
-        return handle_error(Exception("JWT secret key is not set in environment variables!"), 500)
+        jwt_secret = current_app.config["JWT_SECRET_KEY"]
+        if not jwt_secret:
+            return handle_error(Exception("JWT secret key is not set in environment variables!"), 500)
 
-    token = jwt.encode(
-        {"user_id": user.id, "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)},
-        jwt_secret,
-    )
+        token = jwt.encode(
+            {"user_id": user.id, "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)},
+            jwt_secret,
+        )
 
-    decrypted_files = decrypt_user_files(user, kek_data, data["password_derived_key"])
+        decrypted_files = decrypt_user_files(user, kek_data, data["password_derived_key"])
 
-    return jsonify({"token": token, "user_id": user.id, "username": user.username, "files": decrypted_files}), 200
-
-
-@auth_bp.route("/login", methods=["POST"])
-def login() -> tuple:
-    """Login a user and return a JWT token"""
-    data = request.get_json()
-
-    for field in ["username", "entered_auth_password"]:
-        if field not in data:
-            return handle_error(Exception(f"Missing required field: {field}"), 400)
-
-    user = UserLogin.query.filter_by(username=data["username"]).first()
-    if not user:
-        return handle_error(Exception("Invalid username!"), 404)
-
-    try:
-        PasswordHasher().verify(user.auth_password, data["entered_auth_password"])
-    except VerifyMismatchError:
-        return handle_error(Exception("Invalid authentication password!"), 401)
-
-    jwt_secret = current_app.config["JWT_SECRET_KEY"]
-    if not jwt_secret:
-        return handle_error(Exception("JWT secret key is not set in environment variables!"), 500)
-
-    token = jwt.encode(
-        {"user_id": user.id, "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)},
-        jwt_secret,
-    )
-
-    return jsonify({"token": token, "user_id": user.id, "username": user.username}), 200
+        return jsonify({"token": token, "user_id": user.id, "username": user.username, "files": decrypted_files}), 200
 
 
-@auth_bp.route("/auth-password", methods=["PUT"])
-@token_required
-def change_auth_password() -> tuple:
-    """Change the authentication password for a user"""
-    data = request.get_json()
+@auth_ns.route("/login")
+class Login(Resource):
+    @auth_ns.expect(login_model)
+    @auth_ns.response(200, "Login successful")
+    @auth_ns.response(400, "Missing required field")
+    @auth_ns.response(404, "Invalid username")
+    @auth_ns.response(401, "Invalid authentication password")
+    def post(self) -> object:
+        """Login a user and return a JWT token"""
+        data = request.get_json()
 
-    for field in ["username", "old_auth_password", "new_auth_password"]:
-        if field not in data:
-            return handle_error(Exception(f"Missing required field: {field}"), 400)
+        for field in ["username", "entered_auth_password"]:
+            if field not in data:
+                return handle_error(Exception(f"Missing required field: {field}"), 400)
 
-    user = UserLogin.query.filter_by(username=data["username"]).first()
-    if not user:
-        return handle_error(Exception("Invalid username or user not found!"), 404)
+        user = UserLogin.query.filter_by(username=data["username"]).first()
+        if not user:
+            return handle_error(Exception("Invalid username!"), 404)
 
-    try:
-        PasswordHasher().verify(user.auth_password, data["old_auth_password"])
-    except VerifyMismatchError:
-        return handle_error(Exception("Invalid old authentication password!"), 401)
+        try:
+            PasswordHasher().verify(user.auth_password, data["entered_auth_password"])
+        except VerifyMismatchError:
+            return handle_error(Exception("Invalid authentication password!"), 401)
 
-    if data["old_auth_password"] == data["new_auth_password"]:
-        return handle_error(Exception("New authentication password must be different from the old one"), 400)
+        jwt_secret = current_app.config["JWT_SECRET_KEY"]
+        if not jwt_secret:
+            return handle_error(Exception("JWT secret key is not set in environment variables!"), 500)
 
-    user.auth_password = data["new_auth_password"]
+        token = jwt.encode(
+            {"user_id": user.id, "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)},
+            jwt_secret,
+        )
 
-    db.session.commit()
-
-    return jsonify({"message": "Authentication password changed successfully!"}), 200
-
-
-@auth_bp.route("/encryption-password", methods=["PUT"])
-@token_required
-def change_encryption_password() -> tuple:
-    """Change the encryption password for a user"""
-    data = request.get_json()
-
-    error = check_fields(
-        data,
-        required=[
-            "username",
-            "old_password_derived_key",
-            "new_password_derived_key",
-            "new_iv_KEK",
-            "new_encrypted_KEK",
-        ],
-        base64_fields=["old_password_derived_key", "new_iv_KEK", "new_encrypted_KEK"],
-        iv_fields=["new_iv_KEK"],
-    )
-    if error:
-        return handle_error(Exception(error), 400)
-
-    user = UserLogin.query.filter_by(username=data["username"]).first()
-    if not user:
-        return handle_error(Exception("User not found!"), 404)
-    kek_data = UserKEK.query.filter_by(user_id=user.id).first()
-    if not kek_data:
-        return handle_error(Exception("User KEK not found!"), 404)
-
-    error = verify_password_and_kek(data["old_password_derived_key"], kek_data)
-    if error:
-        code = 401 if "password" in error or "Authentication failed" in error else 400
-        return handle_error(Exception(error), code)
-
-    kek_data.iv_KEK = data["new_iv_KEK"]
-    kek_data.encrypted_KEK = data["new_encrypted_KEK"]
-
-    db.session.commit()
-    return jsonify({"message": "Encryption password changed successfully!"}), 200
+        return jsonify({"token": token, "user_id": user.id, "username": user.username}), 200
 
 
-@auth_bp.route("/<user_id>", methods=["DELETE"])
-def delete_user(user_id: str) -> tuple:
-    """Delete a user and their KEK after verifying password"""
-    data = request.get_json()
-    if not data or "password" not in data:
-        return handle_error(Exception("Missing required field: password"), 400)
+@auth_ns.route("/auth-password")
+class ChangeAuthPassword(Resource):
+    @auth_ns.expect(change_auth_password_model)
+    @auth_ns.response(200, "Authentication password changed successfully!")
+    @auth_ns.response(400, "Validation error")
+    @auth_ns.response(401, "Invalid old authentication password")
+    @auth_ns.response(404, "Invalid username or user not found")
+    @token_required
+    def put(self) -> object:
+        """Change the authentication password for a user"""
+        data = request.get_json()
 
-    user = UserLogin.query.filter_by(id=user_id).first()
-    if not user:
-        return handle_error(Exception("User not found!"), 404)
+        for field in ["username", "old_auth_password", "new_auth_password"]:
+            if field not in data:
+                return handle_error(Exception(f"Missing required field: {field}"), 400)
 
-    try:
-        PasswordHasher().verify(user.auth_password, data["password"])
-    except VerifyMismatchError:
-        return handle_error(Exception("Invalid password!"), 401)
+        user = UserLogin.query.filter_by(username=data["username"]).first()
+        if not user:
+            return handle_error(Exception("Invalid username or user not found!"), 404)
 
-    kek = UserKEK.query.filter_by(user_id=user_id).first()
-    if kek:
-        db.session.delete(kek)
-    db.session.delete(user)
-    db.session.commit()
+        try:
+            PasswordHasher().verify(user.auth_password, data["old_auth_password"])
+        except VerifyMismatchError:
+            return handle_error(Exception("Invalid old authentication password!"), 401)
 
-    return jsonify({"message": "User deleted successfully!"}), 200
+        if data["old_auth_password"] == data["new_auth_password"]:
+            return handle_error(Exception("New authentication password must be different from the old one"), 400)
+
+        user.auth_password = data["new_auth_password"]
+
+        db.session.commit()
+
+        return jsonify({"message": "Authentication password changed successfully!"}), 200
 
 
-@auth_bp.route("/user-id", methods=["POST"])
-def get_user_id() -> tuple:
-    """Return the user_id for a given username"""
-    data = request.get_json()
-    if not data or "username" not in data:
-        return handle_error(Exception("Missing required field: username"), 400)
+@auth_ns.route("/encryption-password")
+class ChangeEncryptionPassword(Resource):
+    @auth_ns.expect(change_encryption_password_model)
+    @auth_ns.response(200, "Encryption password changed successfully!")
+    @auth_ns.response(400, "Validation error")
+    @auth_ns.response(401, "Invalid password")
+    @auth_ns.response(404, "User not found")
+    @token_required
+    def put(self) -> object:
+        """Change the encryption password for a user"""
+        data = request.get_json()
 
-    user = UserLogin.query.filter_by(username=data["username"]).first()
-    if not user:
-        return handle_error(Exception("User not found!"), 404)
+        error = check_fields(
+            data,
+            required=[
+                "username",
+                "old_password_derived_key",
+                "new_password_derived_key",
+                "new_iv_KEK",
+                "new_encrypted_KEK",
+            ],
+            base64_fields=["old_password_derived_key", "new_iv_KEK", "new_encrypted_KEK"],
+            iv_fields=["new_iv_KEK"],
+        )
+        if error:
+            return handle_error(Exception(error), 400)
 
-    return jsonify({"user_id": user.id}), 200
+        user = UserLogin.query.filter_by(username=data["username"]).first()
+        if not user:
+            return handle_error(Exception("User not found!"), 404)
+        kek_data = UserKEK.query.filter_by(user_id=user.id).first()
+        if not kek_data:
+            return handle_error(Exception("User KEK not found!"), 404)
+
+        error = verify_password_and_kek(data["old_password_derived_key"], kek_data)
+        if error:
+            code = 401 if "password" in error or "Authentication failed" in error else 400
+            return handle_error(Exception(error), code)
+
+        kek_data.iv_KEK = data["new_iv_KEK"]
+        kek_data.encrypted_KEK = data["new_encrypted_KEK"]
+
+        db.session.commit()
+        return jsonify({"message": "Encryption password changed successfully!"}), 200
+
+
+@auth_ns.route("/<user_id>")
+class DeleteUser(Resource):
+    @auth_ns.expect(delete_user_model)
+    @auth_ns.response(200, "User deleted successfully!")
+    @auth_ns.response(400, "Missing required field")
+    @auth_ns.response(401, "Invalid password")
+    @auth_ns.response(404, "User not found")
+    def delete(self, user_id: str) -> object:
+        """Delete a user and their KEK after verifying password"""
+        data = request.get_json()
+        if not data or "password" not in data:
+            return handle_error(Exception("Missing required field: password"), 400)
+
+        user = UserLogin.query.filter_by(id=user_id).first()
+        if not user:
+            return handle_error(Exception("User not found!"), 404)
+
+        try:
+            PasswordHasher().verify(user.auth_password, data["password"])
+        except VerifyMismatchError:
+            return handle_error(Exception("Invalid password!"), 401)
+
+        kek = UserKEK.query.filter_by(user_id=user_id).first()
+        if kek:
+            db.session.delete(kek)
+        db.session.delete(user)
+        db.session.commit()
+
+        return jsonify({"message": "User deleted successfully!"}), 200
+
+
+@auth_ns.route("/user-id")
+class GetUserId(Resource):
+    @auth_ns.expect(user_id_model)
+    @auth_ns.response(200, "User ID returned")
+    @auth_ns.response(400, "Missing required field")
+    @auth_ns.response(404, "User not found")
+    def post(self) -> object:
+        """Return the user_id for a given username"""
+        data = request.get_json()
+        if not data or "username" not in data:
+            return handle_error(Exception("Missing required field: username"), 400)
+
+        user = UserLogin.query.filter_by(username=data["username"]).first()
+        if not user:
+            return handle_error(Exception("User not found!"), 404)
+
+        return jsonify({"user_id": user.id}), 200
