@@ -11,6 +11,9 @@
 # PyCache
 __pycache__/
 
+# Preventing potential disasters with this one:
+.env
+
 # Local History for Visual Studio Code
 .history/
 

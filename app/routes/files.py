@@ -19,10 +19,10 @@ file_dek_model = files_ns.model(
     "FileDEK",
     {
         "key_id": fields.String,
-        "salt": fields.String,
-        "iv_dek": fields.String,
-        "encrypted_dek": fields.String,
-        "assoc_data_dek": fields.String,
+        "salt": fields.String(description="Base64-encoded salt (must be pre-encoded with base64)"),
+        "iv_dek": fields.String(description="Base64-encoded IV for DEK (must be pre-encoded with base64)"),
+        "encrypted_dek": fields.String(description="Base64-encoded encrypted DEK (must be pre-encoded with base64)"),
+        "assoc_data_dek": fields.String(description="Associated data for DEK (plain string, not base64)"),
     },
 )
 
@@ -31,8 +31,8 @@ file_model = files_ns.model(
     {
         "file_id": fields.String,
         "file_name": fields.String,
-        "iv_file": fields.String,
-        "assoc_data_file": fields.String,
+        "iv_file": fields.String(description="Base64-encoded IV for file (must be pre-encoded with base64)"),
+        "assoc_data_file": fields.String(description="Associated data for file (plain string, not base64)"),
         "created_at": fields.String,
         "dek_data": fields.Nested(file_dek_model, allow_null=True),
     },

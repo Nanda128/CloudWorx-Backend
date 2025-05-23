@@ -151,10 +151,16 @@ register_model = auth_ns.model(
     "Register",
     {
         "username": fields.String(required=True),
-        "auth_password": fields.String(required=True),
+        "auth_password": fields.String(
+            required=True,
+            description="Authentication password (must be hashed with Argon2id before sending)",
+        ),
         "email": fields.String(required=True),
-        "iv_KEK": fields.String(required=True, description="Base64-encoded IV"),
-        "encrypted_KEK": fields.String(required=True, description="Base64-encoded KEK"),
+        "iv_KEK": fields.String(required=True, description="Base64-encoded IV (must be pre-encoded with base64)"),
+        "encrypted_KEK": fields.String(
+            required=True,
+            description="Base64-encoded KEK (must be pre-encoded with base64)",
+        ),
     },
 )
 
@@ -170,7 +176,10 @@ retrieve_files_model = auth_ns.model(
     "RetrieveFiles",
     {
         "username": fields.String(required=True),
-        "password_derived_key": fields.String(required=True),
+        "password_derived_key": fields.String(
+            required=True,
+            description="Base64-encoded password-derived key (must be pre-encoded with base64)",
+        ),
     },
 )
 
@@ -178,8 +187,14 @@ change_auth_password_model = auth_ns.model(
     "ChangeAuthPassword",
     {
         "username": fields.String(required=True),
-        "old_auth_password": fields.String(required=True),
-        "new_auth_password": fields.String(required=True),
+        "old_auth_password": fields.String(
+            required=True,
+            description="Old authentication password (must be hashed with Argon2id before sending)",
+        ),
+        "new_auth_password": fields.String(
+            required=True,
+            description="New authentication password (must be hashed with Argon2id before sending)",
+        ),
     },
 )
 
@@ -187,10 +202,22 @@ change_encryption_password_model = auth_ns.model(
     "ChangeEncryptionPassword",
     {
         "username": fields.String(required=True),
-        "old_password_derived_key": fields.String(required=True),
-        "new_password_derived_key": fields.String(required=True),
-        "new_iv_KEK": fields.String(required=True),
-        "new_encrypted_KEK": fields.String(required=True),
+        "old_password_derived_key": fields.String(
+            required=True,
+            description="Base64-encoded old password-derived key (must be pre-encoded with base64)",
+        ),
+        "new_password_derived_key": fields.String(
+            required=True,
+            description="Base64-encoded new password-derived key (must be pre-encoded with base64)",
+        ),
+        "new_iv_KEK": fields.String(
+            required=True,
+            description="Base64-encoded IV for new KEK (must be pre-encoded with base64)",
+        ),
+        "new_encrypted_KEK": fields.String(
+            required=True,
+            description="Base64-encoded new KEK (must be pre-encoded with base64)",
+        ),
     },
 )
 
