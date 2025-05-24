@@ -11,6 +11,7 @@ class UserLogin(db.Model):
     username = db.Column(db.String(255), unique=True, nullable=False)
     auth_password = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False)
+    public_key = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     modified_at = db.Column(
         db.DateTime,
@@ -43,11 +44,13 @@ class UserLogin(db.Model):
         username: str,
         email: str,
         password: str,
+        public_key: str,
     ) -> None:
         self.id = user_id
         self.username = username
         self.auth_password = password
         self.email = email
+        self.public_key = public_key
 
     def __repr__(self) -> str:
         return f"<User {self.username}>"

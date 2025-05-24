@@ -10,3 +10,4 @@ gunicorn
 python-dotenv
 flask-restx
 pymysql
+pqcrypto

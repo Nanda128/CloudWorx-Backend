@@ -4,6 +4,7 @@ CREATE TABLE
         username VARCHAR(255) NOT NULL UNIQUE,
         auth_password VARCHAR(255) NOT NULL,
         email VARCHAR(255) NOT NULL UNIQUE,
+        public_key VARCHAR(255) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX (username),
@@ -41,7 +42,6 @@ CREATE TABLE
     IF NOT EXISTS file_dek (
         key_id CHAR(36) NOT NULL PRIMARY KEY,
         file_id CHAR(36) NOT NULL,
-        salt VARCHAR(255) NOT NULL,
         iv_dek VARCHAR(255) NOT NULL,
         encrypted_dek VARCHAR(255) NOT NULL,
         assoc_data_dek VARCHAR(255) NOT NULL,

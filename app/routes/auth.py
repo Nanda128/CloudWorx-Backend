@@ -130,8 +130,8 @@ def check_email_and_username(email: str, username: str) -> str | None:
 def validate_register_data(data: dict) -> str | None:
     error = check_fields(
         data,
-        required=["username", "auth_password", "email", "iv_KEK", "encrypted_KEK"],
-        base64_fields=["iv_KEK", "encrypted_KEK"],
+        required=["username", "auth_password", "email", "iv_KEK", "encrypted_KEK", "public_key"],
+        base64_fields=["iv_KEK", "encrypted_KEK", "public_key"],
         iv_fields=["iv_KEK"],
     )
     if error:
@@ -156,6 +156,10 @@ register_model = auth_ns.model(
             description="Authentication password (must be hashed with Argon2id before sending)",
         ),
         "email": fields.String(required=True),
+        "public_key": fields.String(
+            required=False,
+            description="Base64-encoded ML-KEM (Crystals-Kyber) public key for user for sharing",
+        ),
         "iv_KEK": fields.String(required=True, description="Base64-encoded IV (must be pre-encoded with base64)"),
         "encrypted_KEK": fields.String(
             required=True,
@@ -252,7 +256,7 @@ class Register(Resource):
 
         user_id = str(uuid.uuid4())
 
-        new_user = UserLogin(user_id, data["username"], data["email"], data["auth_password"])
+        new_user = UserLogin(user_id, data["username"], data["auth_password"], data["email"], data["public_key"])
 
         new_kek = UserKEK(
             key_id=str(uuid.uuid4()),

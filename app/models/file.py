@@ -80,7 +80,6 @@ class FileDEK(db.Model):
         db.ForeignKey("files.file_id", ondelete="CASCADE"),
         nullable=False,
     )
-    salt = db.Column(db.String(255), nullable=False)
     iv_dek = db.Column(db.String(255), nullable=False)
     encrypted_dek = db.Column(db.String(255), nullable=False)
     assoc_data_dek = db.Column(db.String(255), nullable=False)
@@ -88,7 +87,6 @@ class FileDEK(db.Model):
 
     @dataclass
     class DEKParams:
-        salt: str
         iv_dek: str
         encrypted_dek: str
         assoc_data_dek: str
@@ -101,7 +99,6 @@ class FileDEK(db.Model):
     ) -> None:
         self.key_id = key_id
         self.file_id = file_id
-        self.salt = dek_params.salt
         self.iv_dek = dek_params.iv_dek
         self.encrypted_dek = dek_params.encrypted_dek
         self.assoc_data_dek = dek_params.assoc_data_dek
