@@ -25,7 +25,7 @@ CREATE TABLE
 CREATE TABLE
     IF NOT EXISTS files (
         file_id CHAR(36) NOT NULL PRIMARY KEY,
-        file_name VARCHAR(255) NOT NULL,
+        file_name VARCHAR(255) NOT NULL UNIQUE,
         iv_file VARCHAR(255) NOT NULL,
         encrypted_file LONGBLOB NOT NULL,
         assoc_data_file VARCHAR(255) NOT NULL,
@@ -34,7 +34,7 @@ CREATE TABLE
         file_type VARCHAR(32) NULL,
         file_size INT NULL,
         FOREIGN KEY (created_by) REFERENCES user_login (id) ON DELETE CASCADE,
-        INDEX (created_by)
+        INDEX (created_by) INDEX (file_name),
     );
 
 CREATE TABLE

@@ -264,7 +264,6 @@ class FileShareResource(Resource):
         if recipient.id == current_user.id:
             return jsonify({"message": "Cannot share file with yourself"}), 400
 
-        # Prevent duplicate share
         existing = FileShare.query.filter_by(file_id=file_id, shared_with=recipient.id).first()
         if existing:
             return jsonify({"message": "File already shared with this user"}), 400
@@ -343,7 +342,6 @@ class FileResource(Resource):
             if not file:
                 return jsonify({"message": "File not found"}), 404
             if file.created_by != current_user.id:
-                # Check if file is shared with current_user
                 share = FileShare.query.filter_by(file_id=file_id, shared_with=current_user.id).first()
                 if not share:
                     return jsonify({"message": "Access denied"}), 403
