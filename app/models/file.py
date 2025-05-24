@@ -60,12 +60,8 @@ class File(db.Model):
         self.assoc_data_file = file_params.assoc_data_file
         self.created_by = created_by
         self.created_at = datetime.now(timezone.utc)
-        self.file_type = file_params.file_type or (
-            file_params.file_name.rsplit(".", 1)[-1].lower() if "." in file_params.file_name else None
-        )
-        self.file_size = file_params.file_size or (
-            len(file_params.encrypted_file) if file_params.encrypted_file else None
-        )
+        self.file_type = file_params.file_type
+        self.file_size = file_params.file_size
 
     def __repr__(self) -> str:
         return f"<File {self.file_name}>"

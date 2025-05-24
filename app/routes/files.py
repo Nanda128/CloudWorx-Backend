@@ -146,7 +146,8 @@ class FilesList(Resource):
                 file,
                 file_name,
                 iv_file,
-                assoc_data_file,
+                file_type,
+                file_size,
                 salt,
                 iv_dek,
                 encrypted_dek,
@@ -157,10 +158,7 @@ class FilesList(Resource):
                 return error_response
             file_id = str(uuid.uuid4())
             key_id = str(uuid.uuid4())
-            file.seek(0, io.SEEK_END)
-            file_size = file.tell()
-            file.seek(0)
-            file_type = file.content_type if hasattr(file, "content_type") else "application/octet-stream"
+            assoc_data_file = f"File with ID {file_id} belonging to user {current_user.id}"
 
             new_file = File(
                 File.FileParams(
@@ -249,13 +247,14 @@ class FileResource(Resource):
             return jsonify({"message": f"Error deleting file: {str(e)!s}"}), 500
 
 
-def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any]:
+def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]:
     """Validate the upload request and extract file and DEK information"""
     file = None
     error_response = None
     file_name = None
     iv_file = None
-    assoc_data_file = None
+    file_type = None
+    file_size = None
     salt = None
     iv_dek = None
     encrypted_dek = None
@@ -275,7 +274,13 @@ def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any,
             file_name = escape(file_name)
 
             iv_file = request.form.get("iv_file")
-            assoc_data_file = request.form.get("assoc_data_file")
+            file_type = request.form.get("file_type")
+            file_size = request.form.get("file_size")
+            try:
+                file_size = int(file_size) if file_size is not None else None
+            except ValueError:
+                file_size = None
+
             salt = request.form.get("salt")
             iv_dek = request.form.get("iv_dek")
             encrypted_dek = request.form.get("encrypted_dek")
@@ -283,8 +288,6 @@ def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any,
 
             if not iv_file:
                 error_response = (jsonify({"message": "Missing IV for file encryption"}), 400)
-            elif not assoc_data_file:
-                error_response = (jsonify({"message": "Missing associated data for file encryption"}), 400)
             elif not all([salt, iv_dek, encrypted_dek, assoc_data_dek]):
                 error_response = (jsonify({"message": "Missing DEK encryption data"}), 400)
 
@@ -293,7 +296,8 @@ def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any,
             file,
             file_name,
             iv_file,
-            assoc_data_file,
+            file_type,
+            file_size,
             salt,
             iv_dek,
             encrypted_dek,
@@ -301,12 +305,13 @@ def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any,
             error_response,
         )
 
-    if not file or not allowed_file(file.filename or "") or not file_name or not iv_file or not assoc_data_file:
+    if not file or not allowed_file(file.filename or "") or not file_name or not iv_file:
         return (
             file,
             file_name,
             iv_file,
-            assoc_data_file,
+            file_type,
+            file_size,
             salt,
             iv_dek,
             encrypted_dek,
@@ -319,7 +324,8 @@ def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any,
             file,
             file_name,
             iv_file,
-            assoc_data_file,
+            file_type,
+            file_size,
             salt,
             iv_dek,
             encrypted_dek,
@@ -331,7 +337,8 @@ def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any,
         file,
         file_name,
         iv_file,
-        assoc_data_file,
+        file_type,
+        file_size,
         salt,
         iv_dek,
         encrypted_dek,
