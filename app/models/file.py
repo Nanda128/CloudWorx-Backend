@@ -109,3 +109,42 @@ class FileDEK(db.Model):
 
     def __repr__(self) -> str:
         return f"<FileDEK {self.key_id}>"
+
+
+class FileShare(db.Model):
+    __tablename__ = "file_share"
+
+    share_id = db.Column(db.String(36), primary_key=True, nullable=False)
+    file_id = db.Column(
+        db.String(36),
+        db.ForeignKey("files.file_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    shared_with = db.Column(
+        db.String(36),
+        db.ForeignKey("user_login.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    encrypted_dek = db.Column(db.String(255), nullable=False)
+    iv_dek = db.Column(db.String(255), nullable=False)
+    assoc_data_dek = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+
+    def __init__(
+        self,
+        share_id: str,
+        file_id: str,
+        shared_with: str,
+        encrypted_dek: str,
+        iv_dek: str,
+    ) -> None:
+        self.share_id = share_id
+        self.file_id = file_id
+        self.shared_with = shared_with
+        self.encrypted_dek = encrypted_dek
+        self.iv_dek = iv_dek
+        self.assoc_data_dek = "File of file ID {file_id} shared with {shared_with}"
+        self.created_at = datetime.now(timezone.utc)
+
+    def __repr__(self) -> str:
+        return f"<FileShare file_id={self.file_id} shared_with={self.shared_with}>"

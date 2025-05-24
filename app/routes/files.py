@@ -10,7 +10,7 @@ from markupsafe import escape
 from werkzeug.utils import secure_filename
 
 from app import db
-from app.models.file import File, FileDEK
+from app.models.file import File, FileDEK, FileShare
 from app.models.user import UserLogin
 
 files_ns = Namespace("files", description="File upload, download, and management")
@@ -59,6 +59,52 @@ delete_response_model = files_ns.model(
     "DeleteResponse",
     {
         "message": fields.String,
+    },
+)
+
+share_request_model = files_ns.model(
+    "ShareRequest",
+    {
+        "shared_with_username": fields.String(required=True, description="Username of the recipient"),
+        "encrypted_dek": fields.String(required=True, description="Base64-encoded DEK encrypted for recipient"),
+        "iv_dek": fields.String(required=True, description="Base64-encoded IV for DEK"),
+        "assoc_data_dek": fields.String(required=True, description="Associated data for DEK"),
+    },
+)
+
+share_response_model = files_ns.model(
+    "ShareResponse",
+    {
+        "message": fields.String,
+        "share_id": fields.String,
+        "shared_with": fields.String,
+    },
+)
+
+share_list_model = files_ns.model(
+    "ShareList",
+    {
+        "shares": fields.List(
+            fields.Nested(
+                files_ns.model(
+                    "ShareInfo",
+                    {
+                        "share_id": fields.String,
+                        "shared_with": fields.String,
+                        "shared_with_username": fields.String,
+                        "created_at": fields.String,
+                    },
+                ),
+            ),
+        ),
+        "count": fields.Integer,
+    },
+)
+
+revoke_request_model = files_ns.model(
+    "RevokeRequest",
+    {
+        "shared_with_username": fields.String(required=True, description="Username of the recipient to revoke"),
     },
 )
 
@@ -196,6 +242,92 @@ class FilesList(Resource):
             return jsonify({"message": f"Error uploading file: {str(e)!s}"}), 500
 
 
+@files_ns.route("/<file_id>/share")
+@files_ns.param("file_id", "The file identifier")
+class FileShareResource(Resource):
+    @files_ns.doc(security="apikey")
+    @files_ns.expect(share_request_model)
+    @files_ns.response(201, "File shared successfully", share_response_model)
+    @files_ns.response(404, "File or recipient not found")
+    @files_ns.response(403, "Access denied")
+    @token_required
+    def post(self, current_user: UserLogin, file_id: str) -> tuple:
+        """Share a file with another user (by username)"""
+        data = request.get_json()
+        file = File.query.filter_by(file_id=file_id, created_by=current_user.id).first()
+        if not file:
+            return jsonify({"message": "File not found or access denied"}), 404
+
+        recipient = UserLogin.query.filter_by(username=data.get("shared_with_username")).first()
+        if not recipient:
+            return jsonify({"message": "Recipient user not found"}), 404
+        if recipient.id == current_user.id:
+            return jsonify({"message": "Cannot share file with yourself"}), 400
+
+        # Prevent duplicate share
+        existing = FileShare.query.filter_by(file_id=file_id, shared_with=recipient.id).first()
+        if existing:
+            return jsonify({"message": "File already shared with this user"}), 400
+
+        share = FileShare(
+            share_id=str(uuid.uuid4()),
+            file_id=file_id,
+            shared_with=recipient.id,
+            encrypted_dek=data["encrypted_dek"],
+            iv_dek=data["iv_dek"],
+        )
+        db.session.add(share)
+        db.session.commit()
+        return {
+            "message": "File shared successfully",
+            "share_id": share.share_id,
+            "shared_with": recipient.id,
+        }, 201
+
+    @files_ns.doc(security="apikey")
+    @files_ns.marshal_with(share_list_model)
+    @token_required
+    def get(self, current_user: UserLogin, file_id: str) -> tuple:
+        """List users this file is shared with"""
+        file = File.query.filter_by(file_id=file_id, created_by=current_user.id).first()
+        if not file:
+            return {"shares": [], "count": 0}, 404
+        shares = FileShare.query.filter_by(file_id=file_id).all()
+        share_list = []
+        for s in shares:
+            user = UserLogin.query.filter_by(id=s.shared_with).first()
+            share_list.append(
+                {
+                    "share_id": s.id,
+                    "shared_with": s.shared_with,
+                    "shared_with_username": user.username if user else None,
+                    "created_at": s.created_at.isoformat() if s.created_at else None,
+                },
+            )
+        return {"shares": share_list, "count": len(share_list)}, 200
+
+    @files_ns.doc(security="apikey")
+    @files_ns.expect(revoke_request_model)
+    @files_ns.response(200, "Access revoked")
+    @files_ns.response(404, "File or share not found")
+    @token_required
+    def delete(self, current_user: UserLogin, file_id: str) -> tuple:
+        """Revoke a user's access to a shared file"""
+        data = request.get_json()
+        file = File.query.filter_by(file_id=file_id, created_by=current_user.id).first()
+        if not file:
+            return jsonify({"message": "File not found or access denied"}), 404
+        recipient = UserLogin.query.filter_by(username=data.get("shared_with_username")).first()
+        if not recipient:
+            return jsonify({"message": "Recipient user not found"}), 404
+        share = FileShare.query.filter_by(file_id=file_id, shared_with=recipient.id).first()
+        if not share:
+            return jsonify({"message": "Share not found"}), 404
+        db.session.delete(share)
+        db.session.commit()
+        return {"message": "Access revoked"}, 200
+
+
 @files_ns.route("/<file_id>")
 @files_ns.param("file_id", "The file identifier")
 class FileResource(Resource):
@@ -211,8 +343,7 @@ class FileResource(Resource):
             if not file:
                 return jsonify({"message": "File not found"}), 404
             if file.created_by != current_user.id:
-                from app.models.share import FileShare
-
+                # Check if file is shared with current_user
                 share = FileShare.query.filter_by(file_id=file_id, shared_with=current_user.id).first()
                 if not share:
                     return jsonify({"message": "Access denied"}), 403
