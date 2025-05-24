@@ -157,6 +157,11 @@ class FilesList(Resource):
                 return error_response
             file_id = str(uuid.uuid4())
             key_id = str(uuid.uuid4())
+            file.seek(0, io.SEEK_END)
+            file_size = file.tell()
+            file.seek(0)
+            file_type = file.content_type if hasattr(file, "content_type") else "application/octet-stream"
+
             new_file = File(
                 File.FileParams(
                     file_id=file_id,
@@ -164,6 +169,8 @@ class FilesList(Resource):
                     iv_file=iv_file,
                     encrypted_file=file.read(),
                     assoc_data_file=assoc_data_file,
+                    file_type=file_type,
+                    file_size=file_size,
                 ),
                 created_by=current_user.id,
             )

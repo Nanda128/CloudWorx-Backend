@@ -22,6 +22,8 @@ class File(db.Model):
         nullable=False,
     )
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    file_type = db.Column(db.String(32), nullable=True)
+    file_size = db.Column(db.Integer, nullable=True)
 
     dek = db.relationship(
         "FileDEK",
@@ -43,6 +45,8 @@ class File(db.Model):
         iv_file: str
         encrypted_file: bytes
         assoc_data_file: str
+        file_type: str
+        file_size: int
 
     def __init__(
         self,
@@ -56,6 +60,12 @@ class File(db.Model):
         self.assoc_data_file = file_params.assoc_data_file
         self.created_by = created_by
         self.created_at = datetime.now(timezone.utc)
+        self.file_type = file_params.file_type or (
+            file_params.file_name.rsplit(".", 1)[-1].lower() if "." in file_params.file_name else None
+        )
+        self.file_size = file_params.file_size or (
+            len(file_params.encrypted_file) if file_params.encrypted_file else None
+        )
 
     def __repr__(self) -> str:
         return f"<File {self.file_name}>"

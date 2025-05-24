@@ -415,6 +415,21 @@ class Login(Resource):
         except VerifyMismatchError:
             return handle_error(Exception("Invalid authentication password!"), 401)
 
+        files = File.query.filter_by(created_by=user.id).all()
+        user_files_info = []
+        for file in files:
+            file_info = {
+                "file_id": file.file_id,
+                "file_name": file.file_name,
+                "file_type": None,
+                "file_size": None,
+            }
+            if file.file_name and "." in file.file_name:
+                file_info["file_type"] = file.file_name.rsplit(".", 1)[-1].lower()
+            if file.encrypted_file is not None:
+                file_info["file_size"] = len(file.encrypted_file)
+            user_files_info.append(file_info)
+
         jwt_secret = current_app.config["JWT_SECRET_KEY"]
         if not jwt_secret:
             return handle_error(Exception("JWT secret key is not set in environment variables!"), 500)
@@ -424,7 +439,13 @@ class Login(Resource):
             jwt_secret,
         )
 
-        return jsonify({"token": token, "user_id": user.id, "username": user.username}), 200
+        return jsonify(
+            {
+                "token": token,
+                "user_id": user.id,
+                "files": user_files_info,
+            },
+        ), 200
 
 
 @auth_ns.route("/auth-password")

@@ -31,6 +31,8 @@ CREATE TABLE
         assoc_data_file VARCHAR(255) NOT NULL,
         created_by CHAR(36) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        file_type VARCHAR(32) NULL,
+        file_size INT NULL,
         FOREIGN KEY (created_by) REFERENCES user_login (id) ON DELETE CASCADE,
         INDEX (created_by)
     );
