@@ -6,15 +6,15 @@ from typing import Any, Callable
 
 import jwt
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from fips203 import ML_KEM_512
 from flask import Request, current_app, jsonify, request, send_file
 from flask_restx import Namespace, Resource, fields
 from markupsafe import escape
-from pqcrypto.kem.mceliece8192128 import encrypt
 from werkzeug.utils import secure_filename
 
 from app import db
 from app.models.file import File, FileDEK, FileShare
-from app.models.user import UserLogin
+from app.models.user import UserKEK, UserLogin
 
 files_ns = Namespace("files", description="File upload, download, and management")
 
@@ -94,7 +94,10 @@ share_list_model = files_ns.model(
                         "share_id": fields.String(description="Unique identifier for the share"),
                         "shared_with": fields.String(description="ID of the user the file is shared with"),
                         "shared_with_username": fields.String(description="Username of the recipient"),
-                        "created_at": fields.String(description="Creation timestamp of the share", example="2023-10-01T12:00:00Z"),
+                        "created_at": fields.String(
+                            description="Creation timestamp of the share",
+                            example="2023-10-01T12:00:00Z",
+                        ),
                         "file_id": fields.String(description="ID of the shared file"),
                         "file_name": fields.String(description="Name of the shared file"),
                         "file_size": fields.Integer(description="Size of the shared file in bytes"),
@@ -255,6 +258,29 @@ class FilesList(Resource):
             return jsonify({"message": f"Error uploading file: {str(e)!s}"}), 500
 
 
+def pull_info_for_share(file_id: str, user_id: str, shared_with: str) -> tuple:
+    """Pull file and DEK info for sharing"""
+    file = File.query.filter_by(file_id=file_id, created_by=user_id).first()
+    if not file:
+        return None, None, (jsonify({"message": "File not found or access denied"}), 404), None
+
+    recipient = UserLogin.query.filter_by(username=shared_with).first()
+    if not recipient:
+        return None, None, (jsonify({"message": "Recipient user not found"}), 404), None
+    if recipient.id == user_id:
+        return None, None, (jsonify({"message": "Cannot share file with yourself"}), 400), None
+
+    existing = FileShare.query.filter_by(file_id=file_id, shared_with=recipient.id).first()
+    if existing:
+        return None, None, (jsonify({"message": "File already shared with this user"}), 400), None
+
+    key = UserKEK.query.filter_by(user_id=recipient.id).first()
+    if not key:
+        return None, None, (jsonify({"message": "Recipient does not have a valid KEK"}), 404), None
+
+    return file, key, None, recipient
+
+
 @files_ns.route("/<file_id>/share")
 @files_ns.param("file_id", "The file identifier")
 class FileShareResource(Resource):
@@ -268,26 +294,19 @@ class FileShareResource(Resource):
         """Share a file with another user (by username) and re-encrypt DEK with recipient's public key"""
 
         data = request.get_json()
-        file = File.query.filter_by(file_id=file_id, created_by=current_user.id).first()
-        if not file:
-            return jsonify({"message": "File not found or access denied"}), 404
-
-        recipient = UserLogin.query.filter_by(username=data.get("shared_with_username")).first()
-        if not recipient:
-            return jsonify({"message": "Recipient user not found"}), 404
-        if recipient.id == current_user.id:
-            return jsonify({"message": "Cannot share file with yourself"}), 400
-
-        existing = FileShare.query.filter_by(file_id=file_id, shared_with=recipient.id).first()
-        if existing:
-            return jsonify({"message": "File already shared with this user"}), 400
-
-        pdk = data["password-derived-key"]
+        shared_with_username = data.get("shared_with_username")
+        pdk = data.get("password-derived-key")
+        if not shared_with_username:
+            return jsonify({"message": "Missing recipient username"}), 400
         if not pdk:
             return jsonify({"message": "Missing password-derived key"}), 400
 
-        encrypted_kek = base64.b64decode(current_user.encrypted_kek)
-        kek_iv = base64.b64decode(current_user.kek_iv)
+        file, key, error_response, recipient = pull_info_for_share(file_id, current_user.id, shared_with_username)
+        if error_response:
+            return error_response
+
+        encrypted_kek = base64.b64decode(key.encrypted_kek)
+        kek_iv = base64.b64decode(key.kek_iv)
         aesgcm = AESGCM(pdk)
         kek = aesgcm.decrypt(kek_iv, encrypted_kek, None)
 
@@ -299,15 +318,18 @@ class FileShareResource(Resource):
         aesgcm_kek = AESGCM(kek)
         dek = aesgcm_kek.decrypt(dek_iv, share_encryped_dek, file_dek.assoc_data_dek.encode())
 
-        ct, _ = encrypt(base64.b64decode(recipient.public_key), dek) # BEWARE: This encrypt() is for CRYSTALS-Kyber KEM, not AESGCM.
-        share_encryped_dek = base64.b64encode(ct)
+        (encapsulation_key, decapsulation_key) = ML_KEM_512.keygen()
+        (ciphertext, dek) = encapsulation_key.encaps()
+
+        if dek != decapsulation_key.decaps(ciphertext):
+            msg = "Decapsulation failed, keys do not match"
+            raise ValueError(msg)
 
         share = FileShare(
             share_id=str(uuid.uuid4()),
             file_id=file_id,
             shared_with=recipient.id,
-            encrypted_dek=share_encryped_dek,
-            assoc_data_dek=file_dek.assoc_data_dek,
+            encrypted_dek=base64.b64encode(bytes(ciphertext)),
         )
         db.session.add(share)
         db.session.commit()
@@ -315,6 +337,7 @@ class FileShareResource(Resource):
             "message": "File shared successfully",
             "share_id": share.share_id,
             "shared_with": recipient.id,
+            "decaps_key": base64.b64encode(bytes(decapsulation_key)).decode("utf-8"),
         }, 201
 
     @files_ns.doc(security="apikey")
@@ -405,22 +428,23 @@ class FileResource(Resource):
     @files_ns.response(404, "File not found")
     @token_required
     def get(self, current_user: UserLogin, file_name: str) -> tuple:
-        """Download an encrypted file by name only"""
+        """Download an encrypted file by name"""
         try:
             file = File.query.filter_by(file_name=file_name).first()
             if not file:
                 return jsonify({"message": "File not found"}), 404
             is_owner = file.created_by == current_user.id
             is_shared = False
+            dek = FileDEK.query.filter_by(file_id=file.file_id).first()
+            share = None
+            if not dek:
+                return jsonify({"message": "File encryption key not found"}), 404
             if not is_owner:
                 share = FileShare.query.filter_by(file_id=file.file_id, shared_with=current_user.id).first()
                 if not share:
                     return jsonify({"message": "Access denied"}), 403
                 is_shared = True
             if not is_shared:
-                dek = FileDEK.query.filter_by(file_id=file.file_id).first()
-                if not dek:
-                    return jsonify({"message": "File encryption key not found"}), 404
                 response = send_file(
                     io.BytesIO(file.encrypted_file),
                     mimetype="application/octet-stream",
@@ -446,7 +470,7 @@ class FileResource(Resource):
             response.headers["X-File-Type"] = file.file_type
             response.headers["X-File-IV"] = file.iv_file
             response.headers["X-File-Assoc-Data"] = file.assoc_data_file
-            response.headers["X-File-DEK"] = share.encryped_dek if dek else ""
+            response.headers["X-File-DEK"] = share.encryped_dek if share and dek else ""
             return response, 200  # noqa: TRY300
         except (db.exc.SQLAlchemyError, OSError) as e:
             return jsonify({"message": f"Error downloading file: {str(e)!s}"}), 500
@@ -472,6 +496,7 @@ class FileResource(Resource):
             db.session.rollback()
             return jsonify({"message": f"Error deleting file: {str(e)!s}"}), 500
 
+
 @files_ns.route("/resolve-id/<file_name>")
 @files_ns.param("file_name", "The name of the file to resolve")
 class FileIdResolver(Resource):
@@ -485,6 +510,7 @@ class FileIdResolver(Resource):
         if not file:
             return jsonify({"message": "File not found"}), 404
         return {"file_id": file.file_id}, 200
+
 
 def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any]:
     """Validate the upload request and extract file and DEK information"""

@@ -10,4 +10,4 @@ gunicorn
 python-dotenv
 flask-restx
 pymysql
-pqcrypto
+fips203

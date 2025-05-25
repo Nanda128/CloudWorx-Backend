@@ -122,8 +122,7 @@ class FileShare(db.Model):
         db.ForeignKey("user_login.id", ondelete="CASCADE"),
         nullable=False,
     )
-    encrypted_dek = db.Column(db.String(255), nullable=False)
-    iv_dek = db.Column(db.String(255), nullable=False)
+    encrypted_dek = db.Column(db.LargeBinary(length=255), nullable=False)
     assoc_data_dek = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
@@ -132,14 +131,12 @@ class FileShare(db.Model):
         share_id: str,
         file_id: str,
         shared_with: str,
-        encrypted_dek: str,
-        iv_dek: str,
+        encrypted_dek: bytes,
     ) -> None:
         self.share_id = share_id
         self.file_id = file_id
         self.shared_with = shared_with
         self.encrypted_dek = encrypted_dek
-        self.iv_dek = iv_dek
         self.assoc_data_dek = "File of file ID {file_id} shared with {shared_with}"
         self.created_at = datetime.now(timezone.utc)
 
