@@ -44,7 +44,6 @@ class File(db.Model):
         file_name: str
         iv_file: str
         encrypted_file: bytes
-        assoc_data_file: str
         file_type: str
         file_size: int
 
@@ -57,7 +56,7 @@ class File(db.Model):
         self.file_name = file_params.file_name
         self.iv_file = file_params.iv_file
         self.encrypted_file = file_params.encrypted_file
-        self.assoc_data_file = file_params.assoc_data_file
+        self.assoc_data_file = "File {file_name} with ID {file_id} created by {created_by}"
         self.created_by = created_by
         self.created_at = datetime.now(timezone.utc)
         self.file_type = file_params.file_type
@@ -85,23 +84,18 @@ class FileDEK(db.Model):
     assoc_data_dek = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
-    @dataclass
-    class DEKParams:
-        iv_dek: str
-        encrypted_dek: str
-        assoc_data_dek: str
-
     def __init__(
         self,
         key_id: str,
         file_id: str,
-        dek_params: "FileDEK.DEKParams",
+        iv_dek: str,
+        encrypted_dek: str,
     ) -> None:
         self.key_id = key_id
         self.file_id = file_id
-        self.iv_dek = dek_params.iv_dek
-        self.encrypted_dek = dek_params.encrypted_dek
-        self.assoc_data_dek = dek_params.assoc_data_dek
+        self.iv_dek = iv_dek
+        self.encrypted_dek = encrypted_dek
+        self.assoc_data_dek = "DEK for file ID {file_id} with key ID {key_id}"
         self.created_at = datetime.now(timezone.utc)
 
     def __repr__(self) -> str:
