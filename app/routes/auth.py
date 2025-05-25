@@ -10,6 +10,8 @@ import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from flask import Blueprint, current_app, jsonify, request
 from flask_restx import Namespace, Resource, fields
@@ -122,6 +124,23 @@ def validate_register_data(data: dict) -> str | None:
             return "Invalid encrypted_KEK format"
     except (binascii.Error, ValueError):
         return "Invalid encrypted_KEK format"
+    error = validate_public_key(data["public_key"])
+    if error:
+        return error
+    return None
+
+
+def validate_public_key(public_key: str) -> str | None:
+    try:
+        public_key_bytes = base64.b64decode(public_key)
+    except (binascii.Error, ValueError):
+        return "Invalid base64 encoding for public_key"
+    try:
+        loaded_public_key = serialization.load_pem_public_key(public_key_bytes)
+    except (ValueError, TypeError):
+        return "Invalid public_key format or not a valid PEM-encoded Ed25519 public key"
+    if not isinstance(loaded_public_key, Ed25519PublicKey):
+        return "Public key must be an Ed25519 public key in PEM format"
     return None
 
 
