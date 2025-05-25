@@ -166,7 +166,8 @@ class FilesList(Resource):
             current_app.logger.exception("Error uploading file", exc_info=e)
             return jsonify({"message": f"Error uploading file: {str(e)!s}"}), 500
 
-@files_ns.route("/<file-name>")
+
+@files_ns.route("/<file_name>")
 @files_ns.param("file-name", "The file ID or file name")
 class FileResource(Resource):
     @files_ns.doc(security="apikey", params={"by_name": 'Set to "true" to search by file name instead of ID'})

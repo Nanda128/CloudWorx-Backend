@@ -21,18 +21,25 @@ class FileShare(db.Model):
     assoc_data_dek = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         share_id: str,
         file_id: str,
         shared_with: str,
         encrypted_dek: bytes,
+        iv_dek: str,
+        assoc_data_dek: str = "File of file ID {file_id} shared with {shared_with}",
     ) -> None:
         self.share_id = share_id
         self.file_id = file_id
         self.shared_with = shared_with
         self.encrypted_dek = encrypted_dek
-        self.assoc_data_dek = "File of file ID {file_id} shared with {shared_with}"
+        self.iv_dek = iv_dek
+        self.assoc_data_dek = (
+            assoc_data_dek.format(file_id=file_id, shared_with=shared_with)
+            if assoc_data_dek == "File of file ID {file_id} shared with {shared_with}"
+            else assoc_data_dek
+        )
         self.created_at = datetime.now(timezone.utc)
 
     def __repr__(self) -> str:

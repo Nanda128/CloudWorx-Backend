@@ -37,9 +37,11 @@ def create_app(config: object | None = None) -> Flask:
 
     from app.routes.auth import auth_ns
     from app.routes.files import files_ns
+    from app.routes.shares import shares_ns
 
     api.init_app(app)
     api.add_namespace(auth_ns, path="/api/auth")
     api.add_namespace(files_ns, path="/api/files")
+    api.add_namespace(shares_ns, path="/api/shares")
 
     return app

@@ -1,13 +1,16 @@
 import base64  # noqa: INP001
 import uuid
 
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from fips203 import ML_KEM_512
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from flask import current_app, jsonify, request
 from flask_restx import Namespace, Resource, fields
 
 from app import db
-from app.models.file import File, FileDEK, FileShare
+from app.models.file import File, FileDEK
+from app.models.share import FileShare
 from app.models.user import UserKEK, UserLogin
 from app.utils.token import token_required
 
@@ -51,6 +54,10 @@ share_request_model = shares_ns.model(
         "encrypted_dek": fields.String(required=True, description="Base64-encoded DEK encrypted for recipient"),
         "iv_dek": fields.String(required=True, description="Base64-encoded IV for DEK"),
         "assoc_data_dek": fields.String(required=True, description="Associated data for DEK"),
+        "password-derived-key": fields.String(
+            required=True,
+            description="Base64-encoded password-derived key used to encrypt the DEK",
+        ),
     },
 )
 
@@ -124,6 +131,17 @@ def pull_info_for_share(file_id: str, user_id: str, shared_with: str) -> tuple:
     return file, key, None, recipient
 
 
+def verify_shared_data(data: dict) -> tuple:
+    """Verify the shared data for required fields"""
+    shared_with_username = data.get("shared_with_username")
+    pdk = data.get("password-derived-key")
+    if not shared_with_username:
+        return None, None, (jsonify({"message": "Missing recipient username"}), 400)
+    if not pdk:
+        return None, None, (jsonify({"message": "Missing password-derived key"}), 400)
+    return shared_with_username, pdk, None
+
+
 @shares_ns.route("/<file_id>/share")
 @shares_ns.param("file_id", "The file identifier")
 class FileShareResource(Resource):
@@ -137,12 +155,9 @@ class FileShareResource(Resource):
         """Share a file with another user (by username) and re-encrypt DEK with recipient's public key"""
 
         data = request.get_json()
-        shared_with_username = data.get("shared_with_username")
-        pdk = data.get("password-derived-key")
-        if not shared_with_username:
-            return jsonify({"message": "Missing recipient username"}), 400
-        if not pdk:
-            return jsonify({"message": "Missing password-derived key"}), 400
+        shared_with_username, pdk, error_response = verify_shared_data(data)
+        if error_response:
+            return error_response
 
         file, key, error_response, recipient = pull_info_for_share(file_id, current_user.id, shared_with_username)
         if error_response:
@@ -161,18 +176,56 @@ class FileShareResource(Resource):
         aesgcm_kek = AESGCM(kek)
         dek = aesgcm_kek.decrypt(dek_iv, share_encryped_dek, file_dek.assoc_data_dek.encode())
 
-        (encapsulation_key, decapsulation_key) = ML_KEM_512.keygen()
-        (ciphertext, dek) = encapsulation_key.encaps()
+        recipient_public_key = serialization.load_pem_public_key(
+            key.public_key.encode("utf-8"),
+        )
 
-        if dek != decapsulation_key.decaps(ciphertext):
-            msg = "Decapsulation failed, keys do not match"
-            raise ValueError(msg)
+        if not isinstance(recipient_public_key, ed25519.Ed25519PublicKey):
+            return jsonify(
+                {
+                    "message": ("Recipient's public key is not an Ed25519 key and cannot be used for encryption"),
+                },
+            ), 400
+
+        try:
+            recipient_x25519_pub = x25519.X25519PublicKey.from_public_bytes(
+                recipient_public_key.public_bytes(
+                    encoding=serialization.Encoding.Raw,
+                    format=serialization.PublicFormat.Raw,
+                ),
+            )
+        except (ValueError, TypeError):
+            return jsonify({"message": "Failed to convert Ed25519 public key to X25519 for encryption"}), 400
+
+        ephemeral_private = x25519.X25519PrivateKey.generate()
+        ephemeral_public = ephemeral_private.public_key()
+
+        shared_secret = ephemeral_private.exchange(recipient_x25519_pub)
+
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=b"file-share-ed25519",
+        )
+        symmetric_key = hkdf.derive(shared_secret)
+
+        aesgcm = AESGCM(symmetric_key)
+        iv = AESGCM.generate_key(bit_length=96)
+        encrypted_dek = aesgcm.encrypt(iv, dek, None)
 
         share = FileShare(
             share_id=str(uuid.uuid4()),
             file_id=file_id,
             shared_with=recipient.id,
-            encrypted_dek=base64.b64encode(bytes(ciphertext)),
+            encrypted_dek=base64.b64encode(encrypted_dek),
+            iv_dek=base64.b64encode(iv).decode(),
+            assoc_data_dek=base64.b64encode(
+                ephemeral_public.public_bytes(
+                    encoding=serialization.Encoding.Raw,
+                    format=serialization.PublicFormat.Raw,
+                ),
+            ).decode(),
         )
         db.session.add(share)
         db.session.commit()
@@ -180,7 +233,6 @@ class FileShareResource(Resource):
             "message": "File shared successfully",
             "share_id": share.share_id,
             "shared_with": recipient.id,
-            "decaps_key": base64.b64encode(bytes(decapsulation_key)).decode("utf-8"),
         }, 201
 
     @shares_ns.doc(security="apikey")
