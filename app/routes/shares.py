@@ -6,9 +6,10 @@ from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from flask import current_app, jsonify, request
-from flask_restx import Namespace, Resource, fields
+from flask_restx import Namespace, Resource
 
 from app import db
+from app.docs.shares_docs import register_shares_models
 from app.models.file import File, FileDEK
 from app.models.share import FileShare
 from app.models.user import UserKEK, UserLogin
@@ -16,96 +17,7 @@ from app.utils.token import token_required
 
 shares_ns = Namespace("shares", description="Share management")
 
-file_dek_model = shares_ns.model(
-    "FileDEK",
-    {
-        "key_id": fields.String,
-        "iv_dek": fields.String(description="Base64-encoded IV for DEK"),
-        "encrypted_dek": fields.String(description="Base64-encoded encrypted DEK"),
-        "assoc_data_dek": fields.String(description="Associated data for DEK"),
-    },
-)
-
-file_model = shares_ns.model(
-    "File",
-    {
-        "file_id": fields.String(description="Unique identifier for the file"),
-        "file_name": fields.String(description="Name of the file"),
-        "file_type": fields.String(description="MIME type of the file"),
-        "file_size": fields.Integer(description="Size of the file in bytes"),
-        "iv_file": fields.String(description="Base64-encoded IV for file"),
-        "created_at": fields.String(description="Creation timestamp of the file", example="2023-10-01T12:00:00Z"),
-        "dek_data": fields.Nested(file_dek_model, allow_null=True),
-    },
-)
-
-files_list_model = shares_ns.model(
-    "FilesList",
-    {
-        "files": fields.List(fields.Nested(file_model)),
-        "count": fields.Integer(description="Total number of files owned by the user"),
-    },
-)
-
-share_request_model = shares_ns.model(
-    "ShareRequest",
-    {
-        "shared_with_username": fields.String(required=True, description="Username of the recipient"),
-        "encrypted_dek": fields.String(required=True, description="Base64-encoded DEK encrypted for recipient"),
-        "iv_dek": fields.String(required=True, description="Base64-encoded IV for DEK"),
-        "assoc_data_dek": fields.String(required=True, description="Associated data for DEK"),
-        "password-derived-key": fields.String(
-            required=True,
-            description="Base64-encoded password-derived key used to encrypt the DEK",
-        ),
-    },
-)
-
-share_response_model = shares_ns.model(
-    "ShareResponse",
-    {
-        "message": fields.String(description="Success message after sharing the file"),
-        "share_id": fields.String(description="The ID of the share"),
-        "shared_with": fields.String(description="The ID of the user the file was shared with"),
-    },
-)
-
-share_list_model = shares_ns.model(
-    "ShareList",
-    {
-        "shares": fields.List(
-            fields.Nested(
-                shares_ns.model(
-                    "ShareInfo",
-                    {
-                        "share_id": fields.String(description="Unique identifier for the share"),
-                        "shared_with": fields.String(description="ID of the user the file is shared with"),
-                        "shared_with_username": fields.String(description="Username of the recipient"),
-                        "created_at": fields.String(
-                            description="Creation timestamp of the share",
-                            example="2023-10-01T12:00:00Z",
-                        ),
-                        "file_id": fields.String(description="ID of the shared file"),
-                        "file_name": fields.String(description="Name of the shared file"),
-                        "file_size": fields.Integer(description="Size of the shared file in bytes"),
-                        "file_type": fields.String(description="MIME type of the shared file"),
-                        "encrypted_dek": fields.String(description="Base64-encoded DEK encrypted for recipient"),
-                        "iv_dek": fields.String(description="Base64-encoded IV for DEK"),
-                        "assoc_data_dek": fields.String(description="Associated data for DEK"),
-                    },
-                ),
-            ),
-        ),
-        "count": fields.Integer(description="Total number of shares for the file"),
-    },
-)
-
-revoke_request_model = shares_ns.model(
-    "RevokeRequest",
-    {
-        "shared_with_username": fields.String(required=True, description="Username of the recipient to revoke"),
-    },
-)
+models = register_shares_models(shares_ns)
 
 
 def pull_info_for_share(file_id: str, user_id: str, shared_with: str) -> tuple:
@@ -146,8 +58,8 @@ def verify_shared_data(data: dict) -> tuple:
 @shares_ns.param("file_id", "The file identifier")
 class FileShareResource(Resource):
     @shares_ns.doc(security="apikey")
-    @shares_ns.expect(share_request_model)
-    @shares_ns.response(201, "File shared successfully", share_response_model)
+    @shares_ns.expect(models["share_request_model"])
+    @shares_ns.response(201, "File shared successfully", models["share_response_model"])
     @shares_ns.response(404, "File or recipient not found")
     @shares_ns.response(403, "Access denied")
     @token_required
@@ -236,7 +148,7 @@ class FileShareResource(Resource):
         }, 201
 
     @shares_ns.doc(security="apikey")
-    @shares_ns.marshal_with(share_list_model)
+    @shares_ns.marshal_with(models["share_list_model"])
     @token_required
     def get(self, current_user: UserLogin, file_id: str) -> tuple:
         """List users this file is shared with, including file info"""
@@ -262,8 +174,8 @@ class FileShareResource(Resource):
         return {"shares": share_list, "count": len(share_list)}, 200
 
     @shares_ns.doc(security="apikey")
-    @shares_ns.expect(revoke_request_model)
-    @shares_ns.response(200, "Access revoked")
+    @shares_ns.expect(models["revoke_request_model"])
+    @shares_ns.response(200, "Access revoked", models["revoke_response_model"])
     @shares_ns.response(404, "File or share not found")
     @token_required
     def delete(self, current_user: UserLogin, file_id: str) -> tuple:
@@ -287,7 +199,7 @@ class FileShareResource(Resource):
 @shares_ns.param("user_id", "The user identifier")
 class FilesSharedWithMe(Resource):
     @shares_ns.doc(security="apikey")
-    @shares_ns.marshal_with(files_list_model)
+    @shares_ns.marshal_with(models["files_list_model"])
     @token_required
     def get(self, current_user: UserLogin) -> tuple:
         """Get all files shared with the specified user"""

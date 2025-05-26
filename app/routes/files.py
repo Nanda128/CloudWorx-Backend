@@ -3,11 +3,12 @@ import uuid
 from typing import Any
 
 from flask import Request, current_app, jsonify, request, send_file
-from flask_restx import Namespace, Resource, fields
+from flask_restx import Namespace, Resource
 from markupsafe import escape
 from werkzeug.utils import secure_filename
 
 from app import db
+from app.docs.files_docs import register_files_models
 from app.models.file import File, FileDEK
 from app.models.share import FileShare
 from app.models.user import UserLogin
@@ -15,59 +16,7 @@ from app.utils.token import token_required
 
 files_ns = Namespace("files", description="File upload, download, and management")
 
-file_dek_model = files_ns.model(
-    "FileDEK",
-    {
-        "key_id": fields.String,
-        "iv_dek": fields.String(description="Base64-encoded IV for DEK"),
-        "encrypted_dek": fields.String(description="Base64-encoded encrypted DEK"),
-        "assoc_data_dek": fields.String(description="Associated data for DEK"),
-    },
-)
-
-file_model = files_ns.model(
-    "File",
-    {
-        "file_id": fields.String(description="Unique identifier for the file"),
-        "file_name": fields.String(description="Name of the file"),
-        "file_type": fields.String(description="MIME type of the file"),
-        "file_size": fields.Integer(description="Size of the file in bytes"),
-        "iv_file": fields.String(description="Base64-encoded IV for file"),
-        "created_at": fields.String(description="Creation timestamp of the file", example="2023-10-01T12:00:00Z"),
-        "dek_data": fields.Nested(file_dek_model, allow_null=True),
-    },
-)
-
-files_list_model = files_ns.model(
-    "FilesList",
-    {
-        "files": fields.List(fields.Nested(file_model)),
-        "count": fields.Integer(description="Total number of files owned by the user"),
-    },
-)
-
-upload_response_model = files_ns.model(
-    "UploadResponse",
-    {
-        "message": fields.String(description="Success message after file upload"),
-        "file_id": fields.String(description="The ID of the uploaded file"),
-        "file_name": fields.String(description="The name of the uploaded file"),
-    },
-)
-
-delete_response_model = files_ns.model(
-    "DeleteResponse",
-    {
-        "message": fields.String(description="Success message after file deletion"),
-    },
-)
-
-file_id_response_model = files_ns.model(
-    "FileIdResponse",
-    {
-        "file_id": fields.String(required=True, description="The ID of the file"),
-    },
-)
+models = register_files_models(files_ns)
 
 
 def allowed_file(filename: str) -> bool:
@@ -78,7 +27,8 @@ def allowed_file(filename: str) -> bool:
 @files_ns.route("")
 class FilesList(Resource):
     @files_ns.doc(security="apikey")
-    @files_ns.marshal_with(files_list_model)
+    @files_ns.marshal_with(models["files_list_model"])
+    @files_ns.response(200, "Files retrieved successfully")
     @token_required
     def get(self, current_user: UserLogin) -> tuple:
         """Get info on all files owned by the current user"""
@@ -115,7 +65,9 @@ class FilesList(Resource):
             return {"files": [], "count": 0}, 500
 
     @files_ns.doc(security="apikey")
-    @files_ns.response(201, "File uploaded successfully", upload_response_model)
+    @files_ns.expect(models["file_upload_model"])
+    @files_ns.marshal_with(models["upload_response_model"])
+    @files_ns.response(201, "File uploaded successfully")
     @files_ns.response(400, "Validation error")
     @token_required
     def post(self, current_user: UserLogin) -> tuple:
@@ -170,7 +122,7 @@ class FilesList(Resource):
 @files_ns.route("/<file_name>")
 @files_ns.param("file-name", "The file ID or file name")
 class FileResource(Resource):
-    @files_ns.doc(security="apikey", params={"by_name": 'Set to "true" to search by file name instead of ID'})
+    @files_ns.doc(security="apikey")
     @files_ns.response(200, "File downloaded")
     @files_ns.response(403, "Access denied")
     @files_ns.response(404, "File not found")
@@ -224,7 +176,7 @@ class FileResource(Resource):
             return jsonify({"message": f"Error downloading file: {str(e)!s}"}), 500
 
     @files_ns.doc(security="apikey")
-    @files_ns.response(200, "File deleted successfully", delete_response_model)
+    @files_ns.response(200, "File deleted successfully", models["delete_response_model"])
     @files_ns.response(404, "File not found or access denied")
     @token_required
     def delete(self, current_user: UserLogin, file_name: str) -> tuple:
@@ -249,7 +201,7 @@ class FileResource(Resource):
 @files_ns.param("file_name", "The name of the file to resolve")
 class FileIdResolver(Resource):
     @files_ns.doc(security="apikey")
-    @files_ns.response(200, "File ID resolved", file_id_response_model)
+    @files_ns.response(200, "File ID resolved", models["file_id_response_model"])
     @files_ns.response(404, "File not found")
     @token_required
     def get(self, current_user: UserLogin, file_name: str) -> tuple:

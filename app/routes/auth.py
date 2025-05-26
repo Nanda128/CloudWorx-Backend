@@ -14,9 +14,10 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from flask import Blueprint, current_app, jsonify, request
-from flask_restx import Namespace, Resource, fields
+from flask_restx import Namespace, Resource
 
 from app import db
+from app.docs.auth_docs import register_auth_models
 from app.models.file import File, FileDEK
 from app.models.user import UserKEK, UserLogin
 from app.utils.token import token_required
@@ -26,6 +27,8 @@ auth_ns = Namespace("auth", description="Authentication and user management")
 
 MIN_PASSWORD_LENGTH = 12
 IV_BYTE_LENGTH = 12
+
+models = register_auth_models(auth_ns)
 
 
 def validate_password_strength(password: str) -> tuple[bool, str]:
@@ -144,102 +147,9 @@ def validate_public_key(public_key: str) -> str | None:
     return None
 
 
-register_model = auth_ns.model(
-    "Register",
-    {
-        "username": fields.String(required=True),
-        "auth_password": fields.String(
-            required=True,
-            description="Authentication password (must be hashed with Argon2id before sending)",
-        ),
-        "email": fields.String(required=True),
-        "public_key": fields.String(
-            required=False,
-            description="Base64-encoded ML-KEM (Crystals-Kyber) public key for user for sharing",
-        ),
-        "iv_KEK": fields.String(required=True, description="Base64-encoded IV (must be pre-encoded with base64)"),
-        "encrypted_KEK": fields.String(
-            required=True,
-            description="Base64-encoded KEK (must be pre-encoded with base64)",
-        ),
-    },
-)
-
-login_model = auth_ns.model(
-    "Login",
-    {
-        "username": fields.String(required=True),
-        "entered_auth_password": fields.String(required=True),
-    },
-)
-
-retrieve_files_model = auth_ns.model(
-    "RetrieveFiles",
-    {
-        "username": fields.String(required=True),
-        "password_derived_key": fields.String(
-            required=True,
-            description="Base64-encoded password-derived key (must be pre-encoded with base64)",
-        ),
-    },
-)
-
-change_auth_password_model = auth_ns.model(
-    "ChangeAuthPassword",
-    {
-        "username": fields.String(required=True),
-        "old_auth_password": fields.String(
-            required=True,
-            description="Old authentication password (must be hashed with Argon2id before sending)",
-        ),
-        "new_auth_password": fields.String(
-            required=True,
-            description="New authentication password (must be hashed with Argon2id before sending)",
-        ),
-    },
-)
-
-change_encryption_password_model = auth_ns.model(
-    "ChangeEncryptionPassword",
-    {
-        "username": fields.String(required=True),
-        "old_password_derived_key": fields.String(
-            required=True,
-            description="Base64-encoded old password-derived key (must be pre-encoded with base64)",
-        ),
-        "new_password_derived_key": fields.String(
-            required=True,
-            description="Base64-encoded new password-derived key (must be pre-encoded with base64)",
-        ),
-        "new_iv_KEK": fields.String(
-            required=True,
-            description="Base64-encoded IV for new KEK (must be pre-encoded with base64)",
-        ),
-        "new_encrypted_KEK": fields.String(
-            required=True,
-            description="Base64-encoded new KEK (must be pre-encoded with base64)",
-        ),
-    },
-)
-
-delete_user_model = auth_ns.model(
-    "DeleteUser",
-    {
-        "password": fields.String(required=True),
-    },
-)
-
-user_id_model = auth_ns.model(
-    "GetUserId",
-    {
-        "username": fields.String(required=True),
-    },
-)
-
-
 @auth_ns.route("/register")
 class Register(Resource):
-    @auth_ns.expect(register_model)
+    @auth_ns.expect(models["register_model"])
     @auth_ns.response(201, "User created successfully!")
     @auth_ns.response(400, "Validation error")
     @auth_ns.response(409, "Username already exists!")
@@ -355,7 +265,8 @@ def decrypt_user_files(user: UserLogin, kek_data: UserKEK, password_derived_key:
 
 @auth_ns.route("/retrieve-files")
 class RetrieveFiles(Resource):
-    @auth_ns.expect(retrieve_files_model)
+    @auth_ns.expect(models["retrieve_files_model"])
+    @auth_ns.marshal_with(models["retrieve_files_response_model"])
     @auth_ns.response(200, "Files retrieved")
     @auth_ns.response(400, "Validation error")
     @auth_ns.response(404, "User not found")
@@ -394,7 +305,8 @@ class RetrieveFiles(Resource):
 
 @auth_ns.route("/login")
 class Login(Resource):
-    @auth_ns.expect(login_model)
+    @auth_ns.expect(models["login_model"])
+    @auth_ns.marshal_with(models["login_info_model"])
     @auth_ns.response(200, "Login successful")
     @auth_ns.response(400, "Missing required field")
     @auth_ns.response(404, "Invalid username")
@@ -451,7 +363,7 @@ class Login(Resource):
 
 @auth_ns.route("/auth-password")
 class ChangeAuthPassword(Resource):
-    @auth_ns.expect(change_auth_password_model)
+    @auth_ns.expect(models["change_auth_password_model"])
     @auth_ns.response(200, "Authentication password changed successfully!")
     @auth_ns.response(400, "Validation error")
     @auth_ns.response(401, "Invalid old authentication password")
@@ -486,7 +398,7 @@ class ChangeAuthPassword(Resource):
 
 @auth_ns.route("/encryption-password")
 class ChangeEncryptionPassword(Resource):
-    @auth_ns.expect(change_encryption_password_model)
+    @auth_ns.expect(models["change_encryption_password_model"])
     @auth_ns.response(200, "Encryption password changed successfully!")
     @auth_ns.response(400, "Validation error")
     @auth_ns.response(401, "Invalid password")
@@ -532,7 +444,7 @@ class ChangeEncryptionPassword(Resource):
 
 @auth_ns.route("/<user_id>")
 class DeleteUser(Resource):
-    @auth_ns.expect(delete_user_model)
+    @auth_ns.expect(models["delete_user_model"])
     @auth_ns.response(200, "User deleted successfully!")
     @auth_ns.response(400, "Missing required field")
     @auth_ns.response(401, "Invalid password")
@@ -563,7 +475,8 @@ class DeleteUser(Resource):
 
 @auth_ns.route("/user-id")
 class GetUserId(Resource):
-    @auth_ns.expect(user_id_model)
+    @auth_ns.expect(models["user_id_model"])
+    @auth_ns.marshal_with(models["get_user_id_response_model"])
     @auth_ns.response(200, "User ID returned")
     @auth_ns.response(400, "Missing required field")
     @auth_ns.response(404, "User not found")
