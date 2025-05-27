@@ -14,6 +14,12 @@ class Config:
     UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER")
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024
 
+    ENABLE_TCP_SERVER = os.environ.get("ENABLE_TCP_SERVER", "1") == "1"
+    TCP_HOST = os.environ.get("TCP_HOST", "0.0.0.0")  # noqa: S104
+    TCP_PORT = int(os.environ.get("TCP_PORT", "6174"))
+    TLS_CERT_FILE = os.environ.get("TLS_CERT_FILE", "server.crt")
+    TLS_KEY_FILE = os.environ.get("TLS_KEY_FILE", "server.key")
+
 
 class LocalConfig(Config):
     """Configuration for local development with a local MySQL database."""
@@ -23,3 +29,5 @@ class LocalConfig(Config):
     )
     FLASK_ENV = "development"
     FLASK_DEBUG = True
+
+    ENABLE_TCP_SERVER = os.environ.get("ENABLE_TCP_SERVER", "1") == "1"

@@ -44,4 +44,17 @@ def create_app(config: object | None = None) -> Flask:
     api.add_namespace(files_ns, path="/api/files")
     api.add_namespace(shares_ns, path="/api/shares")
 
+    if app.config.get("ENABLE_TCP_SERVER", True):
+        from app.tcp_server import SecureTCPServer
+
+        if "extensions" not in app.__dict__:
+            app.extensions = {}
+        app.extensions["tcp_server"] = SecureTCPServer(
+            app,
+            host=app.config.get("TCP_HOST", "0.0.0.0"),  # noqa: S104
+            port=app.config.get("TCP_PORT", 6174),
+            cert_file=app.config.get("TLS_CERT_FILE", "server.crt"),
+            key_file=app.config.get("TLS_KEY_FILE", "server.key"),
+        )
+
     return app
