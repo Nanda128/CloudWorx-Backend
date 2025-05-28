@@ -3,7 +3,7 @@ CREATE TABLE
         id CHAR(36) NOT NULL PRIMARY KEY,
         username VARCHAR(255) NOT NULL UNIQUE,
         auth_password TEXT NOT NULL,
-        email TEXT NOT NULL UNIQUE,
+        email VARCHAR(320) NOT NULL UNIQUE,
         public_key TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -34,7 +34,8 @@ CREATE TABLE
         file_type VARCHAR(32) NULL,
         file_size INT NULL,
         FOREIGN KEY (created_by) REFERENCES user_login (id) ON DELETE CASCADE,
-        INDEX (created_by) INDEX (file_name),
+        INDEX (created_by),
+        INDEX (file_name)
     );
 
 CREATE TABLE
