@@ -43,12 +43,34 @@ class SecureTCPServer:
         except FileNotFoundError:
             logger.exception("Certificate files not found")
 
-    def start(self) -> None:
-        """Start the TCP server in a separate thread"""
+    def check_port_available(self) -> bool:
+        """Check if the port is available before attempting to start the server"""
+        test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            test_socket.bind((self.host, self.port))
+        except OSError:
+            return False
+        else:
+            return True
+        finally:
+            test_socket.close()
+
+    def start(self) -> bool:
+        """Start the TCP server in a separate thread
+
+        Returns:
+            bool: True if server started successfully, False otherwise
+
+        """
+        if not self.check_port_available():
+            logger.error("TCP server port %d is already in use. Cannot start the server.", self.port)
+            return False
+
         server_thread = threading.Thread(target=self.run_server)
         server_thread.daemon = True
         server_thread.start()
         logger.info("TCP Server started on %s:%d", self.host, self.port)
+        return True
 
     def run_server(self) -> None:
         """Run the TCP server with TLS encryption"""
@@ -66,6 +88,13 @@ class SecureTCPServer:
 
             while self.running:
                 self.accept_and_handle_client()
+        except OSError as e:
+            if "Address already in use" in str(e):
+                logger.exception(
+                    "TCP server port %d is already in use. Check for other processes using this port.", self.port,
+                )
+            else:
+                logger.exception("TCP server error")
         except Exception:
             logger.exception("TCP server error")
         finally:
