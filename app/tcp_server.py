@@ -45,12 +45,12 @@ class SecureTCPServer:
 
     def start(self) -> None:
         """Start the TCP server in a separate thread"""
-        server_thread = threading.Thread(target=self._run_server)
+        server_thread = threading.Thread(target=self.run_server)
         server_thread.daemon = True
         server_thread.start()
         logger.info("TCP Server started on %s:%d", self.host, self.port)
 
-    def _run_server(self) -> None:
+    def run_server(self) -> None:
         """Run the TCP server with TLS encryption"""
         if not self.ssl_context:
             logger.error("Cannot start TCP server: TLS context not initialized")
@@ -65,37 +65,93 @@ class SecureTCPServer:
             self.running = True
 
             while self.running:
-                client_socket = None
-                try:
-                    client_socket, client_address = self.server_socket.accept()
-                    logger.debug("Accepted connection from %s", client_address)
-
-                    secure_client_socket = self.ssl_context.wrap_socket(
-                        client_socket,
-                        server_side=True,
-                    )
-
-                    client_thread = threading.Thread(
-                        target=self._handle_client,
-                        args=(secure_client_socket, client_address),
-                    )
-                    client_thread.daemon = True
-                    client_thread.start()
-                except (ssl.SSLError, OSError) as e:
-                    if isinstance(e, OSError) and not self.running:
-                        break
-                    if isinstance(e, ssl.SSLError):
-                        logger.exception("SSL Error during connection")
-                    else:
-                        logger.exception("Socket error during accept")
-                    if client_socket:
-                        with contextlib.suppress(Exception):
-                            client_socket.close()
-
+                self.accept_and_handle_client()
         except Exception:
             logger.exception("TCP server error")
         finally:
             self.stop()
+
+    def accept_and_handle_client(self) -> None:
+        client_socket = None
+        try:
+            if self.server_socket is None:
+                logger.error("Server socket is not initialized")
+                return
+            client_socket, client_address = self.server_socket.accept()
+            logger.debug("Accepted connection from %s", client_address)
+
+            if self.is_http_request(client_socket, client_address):
+                return
+
+            if self.ssl_context is None:
+                logger.error("SSL context is not initialized, closing client socket")
+                client_socket.close()
+                return
+
+            secure_client_socket = self.ssl_context.wrap_socket(
+                client_socket,
+                server_side=True,
+            )
+
+            client_thread = threading.Thread(
+                target=self._handle_client,
+                args=(secure_client_socket, client_address),
+            )
+            client_thread.daemon = True
+            client_thread.start()
+        except ssl.SSLError as e:
+            self.handle_ssl_error(e, client_socket, locals().get("client_address", "unknown"))
+        except OSError:
+            if not self.running:
+                return
+            logger.exception("Socket error during accept")
+            if client_socket:
+                with contextlib.suppress(Exception):
+                    client_socket.close()
+
+    def is_http_request(self, client_socket: socket.socket, client_address: tuple[str, int]) -> bool:
+        client_socket.setblocking(False)  # noqa: FBT003
+        try:
+            peek_data = client_socket.recv(4, socket.MSG_PEEK)
+            if peek_data.startswith((b"GET ", b"POST", b"HTTP")):
+                logger.warning("HTTP request detected on SSL port from %s - rejecting", client_address)
+                error_msg = (
+                    b"HTTP/1.1 400 Bad Request\r\nContent-Length: 50\r\n\r\n"
+                    b"Error: This is an SSL/TLS port, not an HTTP port."
+                )
+                client_socket.sendall(error_msg)
+                client_socket.close()
+                return True
+        except (BlockingIOError, OSError) as e:
+            logger.debug("Non-blocking socket error while peeking for HTTP request: %s", e)
+        finally:
+            client_socket.setblocking(True)  # noqa: FBT003
+        return False
+
+    def handle_ssl_error(
+        self,
+        e: Exception,
+        client_socket: socket.socket | None,
+        client_address: tuple[str, int],
+    ) -> None:
+        if "HTTP_REQUEST" in str(e):
+            logger.warning(
+                "HTTP request received on SSL port from %s - connection rejected",
+                client_address,
+            )
+            if client_socket:
+                with contextlib.suppress(Exception):
+                    error_msg = (
+                        b"HTTP/1.1 400 Bad Request\r\nContent-Length: 50\r\n\r\n"
+                        b"Error: This is an SSL/TLS port, not an HTTP port."
+                    )
+                    client_socket.sendall(error_msg)
+                    client_socket.close()
+        else:
+            logger.exception("SSL Error during connection")
+            if client_socket:
+                with contextlib.suppress(Exception):
+                    client_socket.close()
 
     def _handle_client(self, client_socket: ssl.SSLSocket, client_address: tuple[str, int]) -> None:
         """Handle communication with a connected client"""
