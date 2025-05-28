@@ -18,7 +18,7 @@ class FileShare(db.Model):
         nullable=False,
     )
     encrypted_dek = db.Column(db.LargeBinary(length=255), nullable=False)
-    assoc_data_dek = db.Column(db.String(255), nullable=False)
+    assoc_data_dek = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
     def __init__(  # noqa: PLR0913

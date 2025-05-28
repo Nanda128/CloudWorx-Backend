@@ -12,10 +12,10 @@ class File(db.Model):
         primary_key=True,
         nullable=False,
     )
-    file_name = db.Column(db.String(255), unique=True, nullable=False)
-    iv_file = db.Column(db.String(255), nullable=False)
+    file_name = db.Column(db.Text, unique=True, nullable=False)
+    iv_file = db.Column(db.Text, nullable=False)
     encrypted_file = db.Column(db.LargeBinary(length=(2**32) - 1), nullable=False)  # MySQL LONGBLOB
-    assoc_data_file = db.Column(db.String(255), nullable=False)
+    assoc_data_file = db.Column(db.Text, nullable=False)
     created_by = db.Column(
         db.String(36),
         db.ForeignKey("user_login.id", ondelete="CASCADE"),
@@ -79,9 +79,9 @@ class FileDEK(db.Model):
         db.ForeignKey("files.file_id", ondelete="CASCADE"),
         nullable=False,
     )
-    iv_dek = db.Column(db.String(255), nullable=False)
-    encrypted_dek = db.Column(db.String(255), nullable=False)
-    assoc_data_dek = db.Column(db.String(255), nullable=False)
+    iv_dek = db.Column(db.Text, nullable=False)
+    encrypted_dek = db.Column(db.Text, nullable=False)
+    assoc_data_dek = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
     def __init__(
