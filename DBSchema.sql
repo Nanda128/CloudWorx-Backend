@@ -1,14 +1,13 @@
 CREATE TABLE
     IF NOT EXISTS user_login (
         id CHAR(36) NOT NULL PRIMARY KEY,
-        username TEXT NOT NULL UNIQUE,
+        username VARCHAR(255) NOT NULL UNIQUE,
         auth_password TEXT NOT NULL,
         email TEXT NOT NULL UNIQUE,
         public_key TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX (username (255)),
-        INDEX (email (255))
+        INDEX (username)
     );
 
 CREATE TABLE
@@ -26,7 +25,7 @@ CREATE TABLE
 CREATE TABLE
     IF NOT EXISTS files (
         file_id CHAR(36) NOT NULL PRIMARY KEY,
-        file_name TEXT NOT NULL UNIQUE,
+        file_name VARCHAR(255) NOT NULL UNIQUE,
         iv_file TEXT NOT NULL,
         encrypted_file LONGBLOB NOT NULL,
         assoc_data_file TEXT NOT NULL,
@@ -35,7 +34,7 @@ CREATE TABLE
         file_type VARCHAR(32) NULL,
         file_size INT NULL,
         FOREIGN KEY (created_by) REFERENCES user_login (id) ON DELETE CASCADE,
-        INDEX (created_by) INDEX (file_name (255)),
+        INDEX (created_by) INDEX (file_name),
     );
 
 CREATE TABLE

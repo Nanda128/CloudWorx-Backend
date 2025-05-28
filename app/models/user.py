@@ -8,7 +8,7 @@ class UserLogin(db.Model):
     __tablename__ = "user_login"
 
     id = db.Column(db.String(36), primary_key=True, nullable=False)
-    username = db.Column(db.Text, unique=True, nullable=False)
+    username = db.Column(db.String(255), unique=True, nullable=False)
     auth_password = db.Column(db.Text, nullable=False)
     email = db.Column(db.Text, unique=True, nullable=False)
     public_key = db.Column(db.Text, nullable=False)

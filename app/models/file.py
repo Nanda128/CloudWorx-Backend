@@ -12,7 +12,7 @@ class File(db.Model):
         primary_key=True,
         nullable=False,
     )
-    file_name = db.Column(db.Text, unique=True, nullable=False)
+    file_name = db.Column(db.String(255), unique=True, nullable=False)
     iv_file = db.Column(db.Text, nullable=False)
     encrypted_file = db.Column(db.LargeBinary(length=(2**32) - 1), nullable=False)  # MySQL LONGBLOB
     assoc_data_file = db.Column(db.Text, nullable=False)
@@ -100,4 +100,3 @@ class FileDEK(db.Model):
 
     def __repr__(self) -> str:
         return f"<FileDEK {self.key_id}>"
-
