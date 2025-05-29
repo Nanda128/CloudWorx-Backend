@@ -28,7 +28,7 @@ The other two repositories are:
     - On macOS/Linux:
 
       ```bash
-      source env/bin/activate
+      source venv/bin/activate
       ```
 
 3. Install the required packages:
