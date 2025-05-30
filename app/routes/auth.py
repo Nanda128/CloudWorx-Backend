@@ -182,7 +182,7 @@ class Register(Resource):
             error = validate_register_data(data)
             if error:
                 current_app.logger.warning("Registration validation error: %s", error)
-                return handle_error(Exception(error), 400 if error != "Username already exists!" else 409)
+                return handle_error(error, 400 if error != "Username already exists!" else 409)
             current_app.logger.info("Registration data validated successfully")
 
             user_id = str(uuid.uuid4())
