@@ -120,16 +120,19 @@ def validate_register_data(data: dict) -> str | None:
         base64_fields=["iv_KEK", "encrypted_KEK", "public_key"],
         iv_fields=["iv_KEK"],
     )
+    current_app.logger.info("Checking email & username")
     if error:
         return error
     error = check_email_and_username(data["email"], data["username"])
     if error:
         return error
+    current_app.logger.info("Validating KEK")
     try:
         if not base64.b64decode(data["encrypted_KEK"]):
             return "Invalid encrypted_KEK format"
     except (binascii.Error, ValueError):
         return "Invalid encrypted_KEK format"
+    current_app.logger.info("Validating public key")
     error = validate_public_key(data["public_key"])
     if error:
         return error
