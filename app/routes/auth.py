@@ -74,9 +74,9 @@ def validate_iv(iv: str) -> tuple[bool, str]:
         return True, ""
 
 
-def handle_error(error: Exception, code: int = 500) -> tuple:
+def handle_error(error: Exception | str, code: int = 500) -> tuple:
     """Handle errors and return a JSON response"""
-    return {"message": str(error)}, code
+    return {"message": str(error) if not isinstance(error, str) else error}, code
 
 
 def check_fields(
