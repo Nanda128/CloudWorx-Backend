@@ -55,9 +55,10 @@ def validate_base64(value: str, name: str) -> tuple[bool, str]:
     """Validate that a value is a valid base64 string"""
     try:
         base64.b64decode(value)
-        return True, ""  # noqa: TRY300
     except (binascii.Error, ValueError):
         return False, f"Invalid base64 encoding for {name}"
+    else:
+        return True, ""
 
 
 def validate_iv(iv: str) -> tuple[bool, str]:
@@ -66,9 +67,10 @@ def validate_iv(iv: str) -> tuple[bool, str]:
         decoded = base64.b64decode(iv)
         if len(decoded) != IV_BYTE_LENGTH:
             return False, f"IV must be 96 bits ({IV_BYTE_LENGTH} bytes)"
-        return True, ""  # noqa: TRY300
     except (binascii.Error, ValueError):
         return False, "Invalid IV format"
+    else:
+        return True, ""
 
 
 def handle_error(error: Exception, code: int = 500) -> tuple:
@@ -242,11 +244,11 @@ def decrypt_user_files(user: UserLogin, kek_data: UserKEK, password_derived_key:
 
         encrypted_dek = base64.b64decode(dek.encrypted_dek)
         iv_dek = base64.b64decode(dek.iv_dek)
-        dek_bytes = AESGCM(kek).decrypt(iv_dek, encrypted_dek, None)
+        dek = AESGCM(kek).decrypt(iv_dek, encrypted_dek, None)
 
         iv_file = base64.b64decode(file.iv_file)
         try:
-            decrypted_content = AESGCM(dek_bytes).decrypt(iv_file, file.encrypted_file, None)
+            decrypted_content = AESGCM(dek).decrypt(iv_file, file.encrypted_file, None)
         except InvalidTag:
             decrypted_content = None
 

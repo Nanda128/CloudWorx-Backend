@@ -156,7 +156,7 @@ class FileResource(Resource):
                 response.headers["X-File-Type"] = file.file_type
                 response.headers["X-File-IV"] = file.iv_file
                 response.headers["X-File-Assoc-Data"] = file.assoc_data_file
-                response.headers["X-File-DEK"] = dek.key_id if dek else ""
+                response.headers["X-File-DEK"] = dek.encrypted_dek if dek else ""
                 response.headers["X-File-DEK-IV"] = dek.iv_dek if dek else ""
                 return response, 200
             response = send_file(

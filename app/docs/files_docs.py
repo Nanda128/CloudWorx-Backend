@@ -78,8 +78,8 @@ def register_files_models(files_ns: Namespace) -> dict:
         "X-File-Type": "MIME type of the file",
         "X-File-IV": "Initialization vector used for file encryption",
         "X-File-Assoc-Data": "Associated data for file encryption",
-        "X-File-DEK": "Data Encryption Key ID (for owner only)",
-        "X-File-DEK-IV": "DEK Initialization vector (for owner only)",
+        "X-File-DEK": "Data Encryption Key ID",
+        "X-File-DEK-IV": "DEK Initialization vector",
     }
 
     return {

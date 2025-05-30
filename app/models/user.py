@@ -42,8 +42,8 @@ class UserLogin(db.Model):
         self,
         user_id: str,
         username: str,
-        email: str,
         password: str,
+        email: str,
         public_key: str,
     ) -> None:
         self.id = user_id
