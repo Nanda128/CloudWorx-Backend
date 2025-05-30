@@ -138,15 +138,24 @@ def validate_register_data(data: dict) -> str | None:
 def validate_public_key(public_key: str) -> str | None:
     try:
         public_key_bytes = base64.b64decode(public_key)
-    except (binascii.Error, ValueError):
-        return "Invalid base64 encoding for public_key"
-    try:
-        loaded_public_key = serialization.load_pem_public_key(public_key_bytes)
-    except (ValueError, TypeError):
-        return "Invalid public_key format or not a valid PEM-encoded Ed25519 public key"
-    if not isinstance(loaded_public_key, Ed25519PublicKey):
-        return "Public key must be an Ed25519 public key in PEM format"
-    return None
+
+        try:
+            decoded_str = public_key_bytes.decode("utf-8", errors="replace")
+            if decoded_str.startswith("ssh-ed25519"):
+                return "SSH format keys are not supported. Please provide an Ed25519 key in PEM format (Encoded in Base64)."
+        except UnicodeDecodeError:
+            pass
+
+        try:
+            loaded_public_key = serialization.load_pem_public_key(public_key_bytes)
+            if not isinstance(loaded_public_key, Ed25519PublicKey):
+                return "Public key must be an Ed25519 public key in PEM format"
+        except (ValueError, TypeError) as e:
+            return f"Invalid public key format: {e!s}"
+        else:
+            return None
+    except (binascii.Error, ValueError) as e:
+        return f"Invalid base64 encoding for public_key: {e!s}"
 
 
 @auth_ns.route("/register")
