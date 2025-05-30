@@ -120,9 +120,9 @@ def validate_register_data(data: dict) -> str | None:
         base64_fields=["iv_KEK", "encrypted_KEK", "public_key"],
         iv_fields=["iv_KEK"],
     )
-    current_app.logger.info("Checking email & username")
     if error:
         return error
+    current_app.logger.info("Checking email & username")
     error = check_email_and_username(data["email"], data["username"])
     if error:
         return error
