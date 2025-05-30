@@ -5,7 +5,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from flask import current_app, jsonify, request
+from flask import current_app, request
 from flask_restx import Namespace, Resource
 
 from app import db
@@ -24,21 +24,21 @@ def pull_info_for_share(file_id: str, user_id: str, shared_with: str) -> tuple:
     """Pull file and DEK info for sharing"""
     file = File.query.filter_by(file_id=file_id, created_by=user_id).first()
     if not file:
-        return None, None, (jsonify({"message": "File not found or access denied"}), 404), None
+        return None, None, ({"message": "File not found or access denied"}, 404), None
 
     recipient = UserLogin.query.filter_by(username=shared_with).first()
     if not recipient:
-        return None, None, (jsonify({"message": "Recipient user not found"}), 404), None
+        return None, None, ({"message": "Recipient user not found"}, 404), None
     if recipient.id == user_id:
-        return None, None, (jsonify({"message": "Cannot share file with yourself"}), 400), None
+        return None, None, ({"message": "Cannot share file with yourself"}, 400), None
 
     existing = FileShare.query.filter_by(file_id=file_id, shared_with=recipient.id).first()
     if existing:
-        return None, None, (jsonify({"message": "File already shared with this user"}), 400), None
+        return None, None, ({"message": "File already shared with this user"}, 400), None
 
     key = UserKEK.query.filter_by(user_id=recipient.id).first()
     if not key:
-        return None, None, (jsonify({"message": "Recipient does not have a valid KEK"}), 404), None
+        return None, None, ({"message": "Recipient does not have a valid KEK"}, 404), None
 
     return file, key, None, recipient
 
@@ -48,9 +48,9 @@ def verify_shared_data(data: dict) -> tuple:
     shared_with_username = data.get("shared_with_username")
     pdk = data.get("password-derived-key")
     if not shared_with_username:
-        return None, None, (jsonify({"message": "Missing recipient username"}), 400)
+        return None, None, ({"message": "Missing recipient username"}, 400)
     if not pdk:
-        return None, None, (jsonify({"message": "Missing password-derived key"}), 400)
+        return None, None, ({"message": "Missing password-derived key"}, 400)
     return shared_with_username, pdk, None
 
 
@@ -82,7 +82,7 @@ class FileShareResource(Resource):
 
         file_dek = FileDEK.query.filter_by(file_id=file_id).first()
         if not file_dek:
-            return jsonify({"message": "File DEK not found"}), 404
+            return {"message": "File DEK not found"}, 404
         dek_iv = base64.b64decode(file_dek.iv_dek)
         share_encryped_dek = base64.b64decode(file_dek.encrypted_dek)
         aesgcm_kek = AESGCM(kek)
@@ -93,11 +93,9 @@ class FileShareResource(Resource):
         )
 
         if not isinstance(recipient_public_key, ed25519.Ed25519PublicKey):
-            return jsonify(
-                {
-                    "message": ("Recipient's public key is not an Ed25519 key and cannot be used for encryption"),
-                },
-            ), 400
+            return {
+                "message": ("Recipient's public key is not an Ed25519 key and cannot be used for encryption"),
+            }, 400
 
         try:
             recipient_x25519_pub = x25519.X25519PublicKey.from_public_bytes(
@@ -107,7 +105,7 @@ class FileShareResource(Resource):
                 ),
             )
         except (ValueError, TypeError):
-            return jsonify({"message": "Failed to convert Ed25519 public key to X25519 for encryption"}), 400
+            return {"message": "Failed to convert Ed25519 public key to X25519 for encryption"}, 400
 
         ephemeral_private = x25519.X25519PrivateKey.generate()
         ephemeral_public = ephemeral_private.public_key()
@@ -183,13 +181,13 @@ class FileShareResource(Resource):
         data = request.get_json()
         file = File.query.filter_by(file_id=file_id, created_by=current_user.id).first()
         if not file:
-            return jsonify({"message": "File not found or access denied"}), 404
+            return {"message": "File not found or access denied"}, 404
         recipient = UserLogin.query.filter_by(username=data.get("shared_with_username")).first()
         if not recipient:
-            return jsonify({"message": "Recipient user not found"}), 404
+            return {"message": "Recipient user not found"}, 404
         share = FileShare.query.filter_by(file_id=file_id, shared_with=recipient.id).first()
         if not share:
-            return jsonify({"message": "Share not found"}), 404
+            return {"message": "Share not found"}, 404
         db.session.delete(share)
         db.session.commit()
         return {"message": "Access revoked"}, 200

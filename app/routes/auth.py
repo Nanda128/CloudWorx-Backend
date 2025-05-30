@@ -13,7 +13,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, request
 from flask_restx import Namespace, Resource
 
 from app import db
@@ -73,7 +73,7 @@ def validate_iv(iv: str) -> tuple[bool, str]:
 
 def handle_error(error: Exception, code: int = 500) -> tuple:
     """Handle errors and return a JSON response"""
-    return jsonify({"message": str(error)}), code
+    return {"message": str(error)}, code
 
 
 def check_fields(
@@ -179,7 +179,7 @@ class Register(Resource):
         db.session.add(new_kek)
         db.session.commit()
 
-        return jsonify({"message": "User created successfully!", "user_id": user_id}), 201
+        return {"message": "User created successfully!", "user_id": user_id}, 201
 
 
 def validate_retrieve_files_data(data: dict) -> str | None:
@@ -300,7 +300,7 @@ class RetrieveFiles(Resource):
 
         decrypted_files = decrypt_user_files(user, kek_data, data["password_derived_key"])
 
-        return jsonify({"token": token, "user_id": user.id, "username": user.username, "files": decrypted_files}), 200
+        return {"token": token, "user_id": user.id, "username": user.username, "files": decrypted_files}, 200
 
 
 @auth_ns.route("/login")
@@ -352,13 +352,11 @@ class Login(Resource):
             jwt_secret,
         )
 
-        return jsonify(
-            {
-                "token": token,
-                "user_id": user.id,
-                "files": user_files_info,
-            },
-        ), 200
+        return {
+            "token": token,
+            "user_id": user.id,
+            "files": user_files_info,
+        }, 200
 
 
 @auth_ns.route("/auth-password")
@@ -393,7 +391,7 @@ class ChangeAuthPassword(Resource):
 
         db.session.commit()
 
-        return jsonify({"message": "Authentication password changed successfully!"}), 200
+        return {"message": "Authentication password changed successfully!"}, 200
 
 
 @auth_ns.route("/encryption-password")
@@ -439,7 +437,7 @@ class ChangeEncryptionPassword(Resource):
         kek_data.encrypted_KEK = data["new_encrypted_KEK"]
 
         db.session.commit()
-        return jsonify({"message": "Encryption password changed successfully!"}), 200
+        return {"message": "Encryption password changed successfully!"}, 200
 
 
 @auth_ns.route("/<user_id>")
@@ -470,7 +468,7 @@ class DeleteUser(Resource):
         db.session.delete(user)
         db.session.commit()
 
-        return jsonify({"message": "User deleted successfully!"}), 200
+        return {"message": "User deleted successfully!"}, 200
 
 
 @auth_ns.route("/user-id")
@@ -490,4 +488,4 @@ class GetUserId(Resource):
         if not user:
             return handle_error(Exception("User not found!"), 404)
 
-        return jsonify({"user_id": user.id}), 200
+        return {"user_id": user.id}, 200

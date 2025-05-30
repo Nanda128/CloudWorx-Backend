@@ -2,7 +2,7 @@ import io  # noqa: INP001
 import uuid
 from typing import Any
 
-from flask import Request, current_app, jsonify, request, send_file
+from flask import Request, current_app, request, send_file
 from flask_restx import Namespace, Resource
 from markupsafe import escape
 from werkzeug.utils import secure_filename
@@ -116,7 +116,7 @@ class FilesList(Resource):
         except (db.exc.SQLAlchemyError, OSError) as e:
             db.session.rollback()
             current_app.logger.exception("Error uploading file", exc_info=e)
-            return jsonify({"message": f"Error uploading file: {str(e)!s}"}), 500
+            return {"message": f"Error uploading file: {str(e)!s}"}, 500
 
 
 @files_ns.route("/<file_name>")
@@ -132,17 +132,17 @@ class FileResource(Resource):
         try:
             file = File.query.filter_by(file_name=file_name).first()
             if not file:
-                return jsonify({"message": "File not found"}), 404
+                return {"message": "File not found"}, 404
             is_owner = file.created_by == current_user.id
             is_shared = False
             dek = FileDEK.query.filter_by(file_id=file.file_id).first()
             share = None
             if not dek:
-                return jsonify({"message": "File encryption key not found"}), 404
+                return {"message": "File encryption key not found"}, 404
             if not is_owner:
                 share = FileShare.query.filter_by(file_id=file.file_id, shared_with=current_user.id).first()
                 if not share:
-                    return jsonify({"message": "Access denied"}), 403
+                    return {"message": "Access denied"}, 403
                 is_shared = True
             if not is_shared:
                 response = send_file(
@@ -173,7 +173,7 @@ class FileResource(Resource):
             response.headers["X-File-DEK"] = share.encryped_dek if share and dek else ""
             return response, 200  # noqa: TRY300
         except (db.exc.SQLAlchemyError, OSError) as e:
-            return jsonify({"message": f"Error downloading file: {str(e)!s}"}), 500
+            return {"message": f"Error downloading file: {str(e)!s}"}, 500
 
     @files_ns.doc(security="apikey")
     @files_ns.response(200, "File deleted successfully", models["delete_response_model"])
@@ -184,7 +184,7 @@ class FileResource(Resource):
         try:
             file = File.query.filter_by(file_id=file_name, created_by=current_user.id).first()
             if not file:
-                return jsonify({"message": "File not found or access denied"}), 404
+                return {"message": "File not found or access denied"}, 404
             share = FileShare.query.filter_by(file_id=file_name)
             if not share:
                 db.session.delete(share)
@@ -194,7 +194,7 @@ class FileResource(Resource):
             return {"message": "File deleted successfully"}, 200  # noqa: TRY300
         except (db.exc.SQLAlchemyError, OSError) as e:
             db.session.rollback()
-            return jsonify({"message": f"Error deleting file: {str(e)!s}"}), 500
+            return {"message": f"Error deleting file: {str(e)!s}"}, 500
 
 
 @files_ns.route("/resolve-id/<file_name>")
@@ -208,7 +208,7 @@ class FileIdResolver(Resource):
         """Resolve a file name to its file ID for the current user"""
         file = File.query.filter_by(file_name=file_name, created_by=current_user.id).first()
         if not file:
-            return jsonify({"message": "File not found"}), 404
+            return {"message": "File not found"}, 404
         return {"file_id": file.file_id}, 200
 
 
@@ -224,12 +224,12 @@ def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any,
     encrypted_dek = None
 
     if "encrypted_file" not in request.files:
-        error_response = (jsonify({"message": "No file part in the request"}), 400)
+        error_response = ({"message": "No file part in the request"}, 400)
     else:
         file = request.files["encrypted_file"]
 
         if file.filename == "":
-            error_response = (jsonify({"message": "No file selected"}), 400)
+            error_response = {"message": "No file selected"}, 400
         else:
             file_name = request.headers.get("X-File-Name")
             if not file_name:
@@ -248,9 +248,9 @@ def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any,
             encrypted_dek = request.headers.get("X-Encrypted-DEK")
 
             if not iv_file:
-                error_response = (jsonify({"message": "Missing IV for file encryption"}), 400)
+                error_response = ({"message": "Missing IV for file encryption"}, 400)
             elif not all([iv_dek, encrypted_dek]):
-                error_response = (jsonify({"message": "Missing DEK encryption data"}), 400)
+                error_response = ({"message": "Missing DEK encryption data"}, 400)
 
     if error_response:
         return (
@@ -273,7 +273,7 @@ def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any,
             file_size,
             iv_dek,
             encrypted_dek,
-            (jsonify({"message": "Missing required fields for file information"}), 400),
+            ({"message": "Missing required fields for file information"}, 400),
         )
 
     if not iv_dek or not encrypted_dek:
@@ -285,7 +285,7 @@ def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any,
             file_size,
             iv_dek,
             encrypted_dek,
-            (jsonify({"message": "Missing required fields for file DEK information"}), 400),
+            ({"message": "Missing required fields for file DEK information"}, 400),
         )
 
     return (
