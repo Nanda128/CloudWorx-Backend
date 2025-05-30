@@ -180,6 +180,7 @@ class Register(Resource):
             if error:
                 current_app.logger.warning("Registration validation error: %s", error)
                 return handle_error(Exception(error), 400 if error != "Username already exists!" else 409)
+            current_app.logger.info("Registration data validated successfully")
 
             user_id = str(uuid.uuid4())
 
@@ -205,6 +206,7 @@ class Register(Resource):
                 current_app.logger.exception("Database error during registration", exc_info=e)
                 return {"message": f"Error creating user: {e!s}"}, 500
             else:
+                current_app.logger.info("User and KEK added to the database successfully")
                 return {"message": "User created successfully!", "user_id": user_id}, 201
         except Exception:
             current_app.logger.exception("Unexpected error in registration")
