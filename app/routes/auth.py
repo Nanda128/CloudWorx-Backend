@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from flask import Blueprint, current_app, request
 from flask_restx import Namespace, Resource
+from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
 from app.docs.auth_docs import register_auth_models
@@ -142,7 +143,10 @@ def validate_public_key(public_key: str) -> str | None:
         try:
             decoded_str = public_key_bytes.decode("utf-8", errors="replace")
             if decoded_str.startswith("ssh-ed25519"):
-                return "SSH format keys are not supported. Please provide an Ed25519 key in PEM format (Encoded in Base64)."
+                return (
+                    "SSH format keys are not supported. Please provide an Ed25519 key in PEM format "
+                    "(Encoded in Base64)."
+                )
         except UnicodeDecodeError:
             pass
 
@@ -151,10 +155,12 @@ def validate_public_key(public_key: str) -> str | None:
             if not isinstance(loaded_public_key, Ed25519PublicKey):
                 return "Public key must be an Ed25519 public key in PEM format"
         except (ValueError, TypeError) as e:
+            current_app.logger.exception("Public key validation error", exc_info=e)
             return f"Invalid public key format: {e!s}"
         else:
             return None
     except (binascii.Error, ValueError) as e:
+        current_app.logger.exception("Base64 decoding error for public key", exc_info=e)
         return f"Invalid base64 encoding for public_key: {e!s}"
 
 
@@ -166,31 +172,43 @@ class Register(Resource):
     @auth_ns.response(409, "Username already exists!")
     def post(self) -> object:
         """Register a new user"""
-        data = request.get_json()
+        try:
+            data = request.get_json()
+            current_app.logger.info("Received registration request for username: %s", data.get("username"))
 
-        error = validate_register_data(data)
-        if error:
-            return handle_error(Exception(error), 400 if error != "Username already exists!" else 409)
+            error = validate_register_data(data)
+            if error:
+                current_app.logger.warning("Registration validation error: %s", error)
+                return handle_error(Exception(error), 400 if error != "Username already exists!" else 409)
 
-        user_id = str(uuid.uuid4())
+            user_id = str(uuid.uuid4())
 
-        new_user = UserLogin(user_id, data["username"], data["auth_password"], data["email"], data["public_key"])
+            new_user = UserLogin(user_id, data["username"], data["auth_password"], data["email"], data["public_key"])
 
-        new_kek = UserKEK(
-            key_id=str(uuid.uuid4()),
-            user_id=user_id,
-            kek_params=UserKEK.KEKParams(
-                iv_kek=data["iv_KEK"],
-                encrypted_kek=data["encrypted_KEK"],
-                assoc_data_kek=f"User Key Encryption Key for {user_id}",
-            ),
-        )
+            new_kek = UserKEK(
+                key_id=str(uuid.uuid4()),
+                user_id=user_id,
+                kek_params=UserKEK.KEKParams(
+                    iv_kek=data["iv_KEK"],
+                    encrypted_kek=data["encrypted_KEK"],
+                    assoc_data_kek=f"User Key Encryption Key for {user_id}",
+                ),
+            )
 
-        db.session.add(new_user)
-        db.session.add(new_kek)
-        db.session.commit()
-
-        return {"message": "User created successfully!", "user_id": user_id}, 201
+            try:
+                db.session.add(new_user)
+                db.session.add(new_kek)
+                db.session.commit()
+                current_app.logger.info("User created successfully: %s", user_id)
+            except SQLAlchemyError as e:
+                db.session.rollback()
+                current_app.logger.exception("Database error during registration", exc_info=e)
+                return {"message": f"Error creating user: {e!s}"}, 500
+            else:
+                return {"message": "User created successfully!", "user_id": user_id}, 201
+        except Exception:
+            current_app.logger.exception("Unexpected error in registration")
+            return {"message": "Server error processing registration"}, 500
 
 
 def validate_retrieve_files_data(data: dict) -> str | None:
