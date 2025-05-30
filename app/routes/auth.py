@@ -103,7 +103,7 @@ def check_fields(
 
 
 def check_email_and_username(email: str, username: str) -> str | None:
-    email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})*$"
     if not re.match(email_pattern, email):
         return "Invalid email format"
     if not re.match(r"^[A-Za-z0-9_-]+$", username):

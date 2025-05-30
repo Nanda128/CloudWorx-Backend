@@ -166,3 +166,5 @@ local.properties
 # Typically, this file would be tracked if it contains build/dependency configurations:
 #.project
 
+test_api_connection.py
+test_script.py
