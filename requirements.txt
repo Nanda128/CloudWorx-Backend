@@ -11,3 +11,4 @@ python-dotenv
 flask-restx
 pymysql
 pyopenssl
+mod-wsgi
