@@ -558,3 +558,30 @@ class GetUserId(Resource):
             )
 
         return response, 200
+
+
+@auth_ns.route("/users")
+class GetAllUsers(Resource):
+    @auth_ns.marshal_with(models["get_all_users_response_model"])
+    @auth_ns.response(200, "All users retrieved successfully")
+    @auth_ns.response(500, "Server error")
+    def get(self) -> object:
+        """Get all usernames and emails"""
+        try:
+            users = UserLogin.query.order_by(UserLogin.username).all()
+
+            users_list = [
+                {
+                    "username": user.username,
+                    "email": user.email,
+                }
+                for user in users
+            ]
+        except SQLAlchemyError as e:
+            current_app.logger.exception("Database error retrieving users", exc_info=e)
+            return handle_error(f"Error retrieving users: {e!s}", 500)
+        except Exception as e:
+            current_app.logger.exception("Unexpected error retrieving users", exc_info=e)
+            return handle_error("Server error retrieving users", 500)
+        else:
+            return {"users": users_list}, 200

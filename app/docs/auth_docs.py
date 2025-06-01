@@ -165,4 +165,21 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 "kek_created_at": fields.String(description="ISO8601 KEK creation timestamp", required=False),
             },
         ),
+        "get_all_users_response_model": auth_ns.model(
+            "GetAllUsersResponse",
+            {
+                "users": fields.List(
+                    fields.Nested(
+                        auth_ns.model(
+                            "UserBasicInfo",
+                            {
+                                "username": fields.String(description="Username"),
+                                "email": fields.String(description="User email"),
+                            },
+                        ),
+                    ),
+                    description="List of all users with username and email",
+                ),
+            },
+        ),
     }
