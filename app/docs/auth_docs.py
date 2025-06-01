@@ -123,7 +123,6 @@ def register_auth_models(auth_ns: Namespace) -> dict:
             {
                 "token": fields.String(description="JWT token"),
                 "user_id": fields.String(description="User ID"),
-                "files": fields.List(fields.Nested(user_file_info_model)),
             },
         ),
         "retrieve_files_response_model": auth_ns.model(

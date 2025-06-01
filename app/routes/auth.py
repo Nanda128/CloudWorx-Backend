@@ -409,7 +409,6 @@ class Login(Resource):
         return {
             "token": token,
             "user_id": user.id,
-            "files": user_files_info,
         }, 200
 
 
