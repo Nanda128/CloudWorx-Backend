@@ -73,10 +73,6 @@ def register_auth_models(auth_ns: Namespace) -> dict:
             "RetrieveFiles",
             {
                 "username": fields.String(required=True),
-                "password_derived_key": fields.String(
-                    required=True,
-                    description="Base64-encoded password-derived key",
-                ),
             },
         ),
         "change_auth_password_model": auth_ns.model(
@@ -121,12 +117,6 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 "password": fields.String(required=True),
             },
         ),
-        "user_id_model": auth_ns.model(
-            "GetUserId",
-            {
-                "username": fields.String(required=True),
-            },
-        ),
         "user_file_info_model": user_file_info_model,
         "login_info_model": auth_ns.model(
             "LoginResponse",
@@ -143,22 +133,6 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 "user_id": fields.String(description="User ID"),
                 "username": fields.String(description="Username"),
                 "files": fields.List(fields.Nested(decrypted_file_model)),
-            },
-        ),
-        "get_user_id_response_model": auth_ns.model(
-            "GetUserIdResponse",
-            {
-                "user_id": fields.String(description="User ID"),
-                "username": fields.String(description="Username"),
-                "email": fields.String(description="User email"),
-                "public_key": fields.String(description="Base64-encoded public key"),
-                "created_at": fields.String(description="ISO8601 user creation timestamp"),
-                "modified_at": fields.String(description="ISO8601 user modification timestamp"),
-                "key_id": fields.String(description="KEK key ID", required=False),
-                "iv_kek": fields.String(description="Base64-encoded IV for KEK", required=False),
-                "encrypted_kek": fields.String(description="Base64-encoded encrypted KEK", required=False),
-                "assoc_data_kek": fields.String(description="Associated data for KEK", required=False),
-                "kek_created_at": fields.String(description="ISO8601 KEK creation timestamp", required=False),
             },
         ),
         "get_all_users_response_model": auth_ns.model(
