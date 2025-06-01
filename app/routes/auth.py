@@ -229,11 +229,11 @@ class Register(Resource):
             return {"message": "Server error processing registration"}, 500
         else:
             return {
-                    "message": "User created successfully!",
-                    "user_id": user_id,
-                    "key_fingerprint": key_fingerprint,
-                    "tofu_message": tofu_message,
-                }, 201
+                "message": "User created successfully!",
+                "user_id": user_id,
+                "key_fingerprint": key_fingerprint,
+                "tofu_message": tofu_message,
+            }, 201
 
 
 def validate_retrieve_files_data(data: dict) -> str | None:
@@ -530,6 +530,60 @@ class DeleteUser(Resource):
         db.session.commit()
 
         return {"message": "User deleted successfully!"}, 200
+
+    @auth_ns.response(200, "User information returned")
+    @auth_ns.response(404, "User not found")
+    @auth_ns.marshal_with(models["get_user_info_response_model"])
+    def get(self, user_id: str) -> object:
+        """Get all information for a user, their KEK, and their files"""
+        user = UserLogin.query.filter_by(id=user_id).first()
+        if not user:
+            return handle_error(Exception("User not found!"), 404)
+
+        kek = UserKEK.query.filter_by(user_id=user_id).first()
+
+        files = File.query.filter_by(created_by=user_id).all()
+        files_info = []
+        for file in files:
+            file_info = {
+                "file_id": file.file_id,
+                "file_name": file.file_name,
+                "file_type": None,
+                "file_size": None,
+            }
+            if file.file_name and "." in file.file_name:
+                file_info["file_type"] = file.file_name.rsplit(".", 1)[-1].lower()
+            if file.encrypted_file is not None:
+                file_info["file_size"] = len(file.encrypted_file)
+            files_info.append(file_info)
+
+        user_info = {
+            "user_id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "public_key": user.public_key,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "modified_at": user.modified_at.isoformat() if user.modified_at else None,
+        }
+
+        if kek:
+            user_info.update(
+                {
+                    "key_id": kek.key_id,
+                    "iv_kek": kek.iv_kek,
+                    "encrypted_kek": kek.encrypted_kek,
+                    "assoc_data_kek": kek.assoc_data_kek,
+                    "salt": kek.salt,
+                    "p": kek.p,
+                    "m": kek.m,
+                    "t": kek.t,
+                    "kek_created_at": kek.created_at.isoformat() if kek.created_at else None,
+                },
+            )
+
+        user_info["files"] = files_info
+
+        return user_info, 200
 
 
 @auth_ns.route("/user-id")
