@@ -116,7 +116,7 @@ def check_email_and_username(email: str, username: str) -> str | None:
 def validate_register_data(data: dict) -> str | None:
     error = check_fields(
         data,
-        required=["username", "auth_password", "email", "iv_KEK", "encrypted_KEK", "public_key"],
+        required=["username", "auth_password", "email", "iv_KEK", "encrypted_KEK", "public_key", "p", "salt", "m", "t"],
         base64_fields=["iv_KEK", "encrypted_KEK", "public_key"],
         iv_fields=["iv_KEK"],
     )
@@ -196,6 +196,10 @@ class Register(Resource):
                     iv_kek=data["iv_KEK"],
                     encrypted_kek=data["encrypted_KEK"],
                     assoc_data_kek=f"User Key Encryption Key for {user_id}",
+                    salt=data.get("salt", ""),
+                    p=int(data.get("p", 0)),
+                    m=int(data.get("m", 0)),
+                    t=int(data.get("t", 0)),
                 ),
             )
 
@@ -361,6 +365,9 @@ class Login(Resource):
             PasswordHasher().verify(user.auth_password, data["entered_auth_password"])
         except VerifyMismatchError:
             return handle_error(Exception("Invalid authentication password!"), 401)
+        kek_data = UserKEK.query.filter_by(user_id=user.id).first()
+        if not kek_data:
+            return handle_error(Exception("User KEK not found!"), 404)
 
         files = File.query.filter_by(created_by=user.id).all()
         user_files_info = []
@@ -390,6 +397,10 @@ class Login(Resource):
             "token": token,
             "user_id": user.id,
             "files": user_files_info,
+            "salt": kek_data.salt,
+            "p": kek_data.p,
+            "m": kek_data.m,
+            "t": kek_data.t,
         }, 200
 
 
@@ -538,6 +549,10 @@ class GetUserId(Resource):
                     "iv_kek": kek_data.iv_kek,
                     "encrypted_kek": kek_data.encrypted_kek,
                     "assoc_data_kek": kek_data.assoc_data_kek,
+                    "salt": kek_data.salt,
+                    "p": kek_data.p,
+                    "m": kek_data.m,
+                    "t": kek_data.t,
                     "kek_created_at": kek_data.created_at.isoformat() if kek_data.created_at else None,
                 },
             )

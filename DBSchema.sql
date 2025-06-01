@@ -17,6 +17,10 @@ CREATE TABLE
         iv_KEK TEXT NOT NULL,
         encrypted_KEK TEXT NOT NULL,
         assoc_data_KEK TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        p int NOT NULL,
+        m int NOT NULL,
+        t int NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES user_login (id) ON DELETE CASCADE,
         INDEX (user_id)

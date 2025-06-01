@@ -68,12 +68,20 @@ class UserKEK(db.Model):
     iv_kek = db.Column(db.Text, nullable=False)
     encrypted_kek = db.Column(db.Text, nullable=False)
     assoc_data_kek = db.Column(db.Text, nullable=False)
+    salt = db.Column(db.Text, nullable=False, default="")
+    p = db.Column(db.Integer, nullable=False, default=0)
+    m = db.Column(db.Integer, nullable=False, default=0)
+    t = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
     class KEKParams(NamedTuple):
         iv_kek: str
         encrypted_kek: str
         assoc_data_kek: str
+        salt: str
+        p: int
+        m: int
+        t: int
 
     def __init__(
         self,
@@ -86,6 +94,10 @@ class UserKEK(db.Model):
         self.iv_kek = kek_params.iv_kek
         self.encrypted_kek = kek_params.encrypted_kek
         self.assoc_data_kek = kek_params.assoc_data_kek
+        self.salt = kek_params.salt
+        self.p = kek_params.p
+        self.m = kek_params.m
+        self.t = kek_params.t
 
     def __repr__(self) -> str:
         return f"<UserKEK {self.key_id}>"
