@@ -187,10 +187,6 @@ class Register(Resource):
 
             user_id = str(uuid.uuid4())
 
-            is_trusted, tofu_message, _ = verify_tofu_key(user_id, data["public_key"])
-            if not is_trusted:
-                return handle_error(f"Key verification failed: {tofu_message}", 400)
-
             new_user = UserLogin(user_id, data["username"], data["auth_password"], data["email"], data["public_key"])
 
             new_kek = UserKEK(
@@ -211,6 +207,13 @@ class Register(Resource):
                 db.session.add(new_user)
                 db.session.add(new_kek)
                 db.session.commit()
+
+                is_trusted, tofu_message, _ = verify_tofu_key(user_id, data["public_key"])
+                if not is_trusted:
+                    db.session.delete(new_user)
+                    db.session.delete(new_kek)
+                    db.session.commit()
+                    return handle_error(f"Key verification failed: {tofu_message}", 400)
 
                 key_fingerprint = calculate_key_fingerprint(data["public_key"])
                 current_app.logger.info(
