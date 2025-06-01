@@ -13,6 +13,7 @@ from app.docs.shares_docs import register_shares_models
 from app.models.file import File, FileDEK
 from app.models.share import FileShare
 from app.models.user import UserKEK, UserLogin
+from app.utils.tofu import verify_tofu_key
 from app.utils.token import token_required
 
 shares_ns = Namespace("shares", description="Share management")
@@ -66,84 +67,107 @@ class FileShareResource(Resource):
     def post(self, current_user: UserLogin, file_id: str) -> tuple:
         """Share a file with another user (by username) and re-encrypt DEK with recipient's public key"""
 
+        response = None
+
         data = request.get_json()
         shared_with_username, pdk, error_response = verify_shared_data(data)
         if error_response:
-            return error_response
+            response = error_response
+        else:
+            file, key, error_response, recipient = pull_info_for_share(file_id, current_user.id, shared_with_username)
+            if error_response:
+                response = error_response
+            else:
+                is_trusted, tofu_message, _ = verify_tofu_key(recipient.id, recipient.public_key)
+                if not is_trusted:
+                    current_app.logger.warning("TOFU verification failed for sharing: %s", tofu_message)
+                    response = ({"message": f"Key verification failed: {tofu_message}"}, 400)
+                else:
+                    encrypted_kek = base64.b64decode(key.encrypted_kek)
+                    kek_iv = base64.b64decode(key.kek_iv)
+                    aesgcm = AESGCM(pdk)
+                    kek = aesgcm.decrypt(kek_iv, encrypted_kek, None)
 
-        file, key, error_response, recipient = pull_info_for_share(file_id, current_user.id, shared_with_username)
-        if error_response:
-            return error_response
+                    file_dek = FileDEK.query.filter_by(file_id=file_id).first()
+                    if not file_dek:
+                        response = ({"message": "File DEK not found"}, 404)
+                    else:
+                        dek_iv = base64.b64decode(file_dek.iv_dek)
+                        share_encryped_dek = base64.b64decode(file_dek.encrypted_dek)
+                        aesgcm_kek = AESGCM(kek)
+                        dek = aesgcm_kek.decrypt(dek_iv, share_encryped_dek, file_dek.assoc_data_dek.encode())
 
-        encrypted_kek = base64.b64decode(key.encrypted_kek)
-        kek_iv = base64.b64decode(key.kek_iv)
-        aesgcm = AESGCM(pdk)
-        kek = aesgcm.decrypt(kek_iv, encrypted_kek, None)
+                        recipient_public_key = serialization.load_pem_public_key(
+                            key.public_key.encode("utf-8"),
+                        )
 
-        file_dek = FileDEK.query.filter_by(file_id=file_id).first()
-        if not file_dek:
-            return {"message": "File DEK not found"}, 404
-        dek_iv = base64.b64decode(file_dek.iv_dek)
-        share_encryped_dek = base64.b64decode(file_dek.encrypted_dek)
-        aesgcm_kek = AESGCM(kek)
-        dek = aesgcm_kek.decrypt(dek_iv, share_encryped_dek, file_dek.assoc_data_dek.encode())
+                        if not isinstance(recipient_public_key, ed25519.Ed25519PublicKey):
+                            response = (
+                                {
+                                    "message": (
+                                        "Recipient's public key is not an Ed25519 key and cannot be used for encryption"
+                                    ),
+                                },
+                                400,
+                            )
+                        else:
+                            try:
+                                recipient_x25519_pub = x25519.X25519PublicKey.from_public_bytes(
+                                    recipient_public_key.public_bytes(
+                                        encoding=serialization.Encoding.Raw,
+                                        format=serialization.PublicFormat.Raw,
+                                    ),
+                                )
+                            except (ValueError, TypeError):
+                                response = (
+                                    {
+                                        "message": ("Failed to convert Ed25519 public key to X25519 for encryption"),
+                                    },
+                                    400,
+                                )
+                            else:
+                                ephemeral_private = x25519.X25519PrivateKey.generate()
+                                ephemeral_public = ephemeral_private.public_key()
 
-        recipient_public_key = serialization.load_pem_public_key(
-            key.public_key.encode("utf-8"),
-        )
+                                shared_secret = ephemeral_private.exchange(recipient_x25519_pub)
 
-        if not isinstance(recipient_public_key, ed25519.Ed25519PublicKey):
-            return {
-                "message": ("Recipient's public key is not an Ed25519 key and cannot be used for encryption"),
-            }, 400
+                                hkdf = HKDF(
+                                    algorithm=hashes.SHA256(),
+                                    length=32,
+                                    salt=None,
+                                    info=b"file-share-ed25519",
+                                )
+                                symmetric_key = hkdf.derive(shared_secret)
 
-        try:
-            recipient_x25519_pub = x25519.X25519PublicKey.from_public_bytes(
-                recipient_public_key.public_bytes(
-                    encoding=serialization.Encoding.Raw,
-                    format=serialization.PublicFormat.Raw,
-                ),
-            )
-        except (ValueError, TypeError):
-            return {"message": "Failed to convert Ed25519 public key to X25519 for encryption"}, 400
+                                aesgcm = AESGCM(symmetric_key)
+                                iv = AESGCM.generate_key(bit_length=96)
+                                encrypted_dek = aesgcm.encrypt(iv, dek, None)
 
-        ephemeral_private = x25519.X25519PrivateKey.generate()
-        ephemeral_public = ephemeral_private.public_key()
+                                share = FileShare(
+                                    share_id=str(uuid.uuid4()),
+                                    file_id=file_id,
+                                    shared_with=recipient.id,
+                                    encrypted_dek=base64.b64encode(encrypted_dek),
+                                    iv_dek=base64.b64encode(iv).decode(),
+                                    assoc_data_dek=base64.b64encode(
+                                        ephemeral_public.public_bytes(
+                                            encoding=serialization.Encoding.Raw,
+                                            format=serialization.PublicFormat.Raw,
+                                        ),
+                                    ).decode(),
+                                )
+                                db.session.add(share)
+                                db.session.commit()
+                                response = (
+                                    {
+                                        "message": "File shared successfully",
+                                        "share_id": share.share_id,
+                                        "shared_with": recipient.id,
+                                    },
+                                    201,
+                                )
 
-        shared_secret = ephemeral_private.exchange(recipient_x25519_pub)
-
-        hkdf = HKDF(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=None,
-            info=b"file-share-ed25519",
-        )
-        symmetric_key = hkdf.derive(shared_secret)
-
-        aesgcm = AESGCM(symmetric_key)
-        iv = AESGCM.generate_key(bit_length=96)
-        encrypted_dek = aesgcm.encrypt(iv, dek, None)
-
-        share = FileShare(
-            share_id=str(uuid.uuid4()),
-            file_id=file_id,
-            shared_with=recipient.id,
-            encrypted_dek=base64.b64encode(encrypted_dek),
-            iv_dek=base64.b64encode(iv).decode(),
-            assoc_data_dek=base64.b64encode(
-                ephemeral_public.public_bytes(
-                    encoding=serialization.Encoding.Raw,
-                    format=serialization.PublicFormat.Raw,
-                ),
-            ).decode(),
-        )
-        db.session.add(share)
-        db.session.commit()
-        return {
-            "message": "File shared successfully",
-            "share_id": share.share_id,
-            "shared_with": recipient.id,
-        }, 201
+        return response
 
     @shares_ns.doc(security="apikey")
     @shares_ns.marshal_with(models["share_list_model"])

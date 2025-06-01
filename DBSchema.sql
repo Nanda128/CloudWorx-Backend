@@ -67,3 +67,19 @@ CREATE TABLE
         INDEX (file_id),
         INDEX (shared_with)
     );
+
+CREATE TABLE
+    IF NOT EXISTS trusted_keys (
+        id CHAR(36) NOT NULL PRIMARY KEY,
+        user_id CHAR(36) NOT NULL,
+        key_fingerprint VARCHAR(64) NOT NULL,
+        public_key TEXT NOT NULL,
+        first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_verified TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        trust_status ENUM ('trusted', 'revoked', 'suspicious') DEFAULT 'trusted',
+        verification_count INT DEFAULT 1,
+        FOREIGN KEY (user_id) REFERENCES user_login (id) ON DELETE CASCADE,
+        UNIQUE KEY unique_user_key (user_id, key_fingerprint),
+        INDEX (user_id),
+        INDEX (key_fingerprint)
+    );

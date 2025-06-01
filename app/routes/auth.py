@@ -21,6 +21,7 @@ from app import db
 from app.docs.auth_docs import register_auth_models
 from app.models.file import File, FileDEK
 from app.models.user import UserKEK, UserLogin
+from app.utils.tofu import calculate_key_fingerprint, verify_tofu_key
 from app.utils.token import token_required
 
 auth_bp = Blueprint("auth", __name__)
@@ -174,7 +175,7 @@ class Register(Resource):
     @auth_ns.response(400, "Validation error")
     @auth_ns.response(409, "Username already exists!")
     def post(self) -> object:
-        """Register a new user"""
+        """Register a new user with TOFU key verification"""
         try:
             data = request.get_json()
             current_app.logger.info("Received registration request for username: %s", data.get("username"))
@@ -183,9 +184,12 @@ class Register(Resource):
             if error:
                 current_app.logger.warning("Registration validation error: %s", error)
                 return handle_error(error, 400 if error != "Username already exists!" else 409)
-            current_app.logger.info("Registration data validated successfully")
 
             user_id = str(uuid.uuid4())
+
+            is_trusted, tofu_message, _ = verify_tofu_key(user_id, data["public_key"])
+            if not is_trusted:
+                return handle_error(f"Key verification failed: {tofu_message}", 400)
 
             new_user = UserLogin(user_id, data["username"], data["auth_password"], data["email"], data["public_key"])
 
@@ -207,17 +211,29 @@ class Register(Resource):
                 db.session.add(new_user)
                 db.session.add(new_kek)
                 db.session.commit()
-                current_app.logger.info("User created successfully: %s", user_id)
+
+                key_fingerprint = calculate_key_fingerprint(data["public_key"])
+                current_app.logger.info(
+                    "User created successfully: %s with key fingerprint: %s",
+                    user_id,
+                    key_fingerprint,
+                )
+
             except SQLAlchemyError as e:
                 db.session.rollback()
                 current_app.logger.exception("Database error during registration", exc_info=e)
                 return {"message": f"Error creating user: {e!s}"}, 500
-            else:
-                current_app.logger.info("User and KEK added to the database successfully")
-                return {"message": "User created successfully!", "user_id": user_id}, 201
+
         except Exception:
             current_app.logger.exception("Unexpected error in registration")
             return {"message": "Server error processing registration"}, 500
+        else:
+            return {
+                    "message": "User created successfully!",
+                    "user_id": user_id,
+                    "key_fingerprint": key_fingerprint,
+                    "tofu_message": tofu_message,
+                }, 201
 
 
 def validate_retrieve_files_data(data: dict) -> str | None:
