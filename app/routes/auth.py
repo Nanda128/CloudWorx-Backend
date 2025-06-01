@@ -509,17 +509,37 @@ class DeleteUser(Resource):
 class GetUserId(Resource):
     @auth_ns.expect(models["user_id_model"])
     @auth_ns.marshal_with(models["get_user_id_response_model"])
-    @auth_ns.response(200, "User ID returned")
+    @auth_ns.response(200, "User information returned")
     @auth_ns.response(400, "Missing required field")
     @auth_ns.response(404, "User not found")
     def post(self) -> object:
-        """Return the user_id for a given username"""
+        """Return comprehensive user information for a given username"""
         data = request.get_json()
         if not data or "username" not in data:
             return handle_error(Exception("Missing required field: username"), 400)
 
-        user = UserLogin.query.filter_by(username=data["username"]).first()
-        if not user:
-            return handle_error(Exception("User not found!"), 404)
+        user, kek_data, error = get_user_and_kek(data["username"])
+        if error:
+            return handle_error(Exception(error), 404)
 
-        return {"user_id": user.id}, 200
+        response = {
+            "user_id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "public_key": user.public_key,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "modified_at": user.modified_at.isoformat() if user.modified_at else None,
+        }
+
+        if kek_data:
+            response.update(
+                {
+                    "key_id": kek_data.key_id,
+                    "iv_kek": kek_data.iv_kek,
+                    "encrypted_kek": kek_data.encrypted_kek,
+                    "assoc_data_kek": kek_data.assoc_data_kek,
+                    "kek_created_at": kek_data.created_at.isoformat() if kek_data.created_at else None,
+                },
+            )
+
+        return response, 200

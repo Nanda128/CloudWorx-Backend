@@ -133,6 +133,16 @@ def register_auth_models(auth_ns: Namespace) -> dict:
             "GetUserIdResponse",
             {
                 "user_id": fields.String(description="User ID"),
+                "username": fields.String(description="Username"),
+                "email": fields.String(description="User email"),
+                "public_key": fields.String(description="Base64-encoded public key"),
+                "created_at": fields.String(description="ISO8601 user creation timestamp"),
+                "modified_at": fields.String(description="ISO8601 user modification timestamp"),
+                "key_id": fields.String(description="KEK key ID", required=False),
+                "iv_kek": fields.String(description="Base64-encoded IV for KEK", required=False),
+                "encrypted_kek": fields.String(description="Base64-encoded encrypted KEK", required=False),
+                "assoc_data_kek": fields.String(description="Associated data for KEK", required=False),
+                "kek_created_at": fields.String(description="ISO8601 KEK creation timestamp", required=False),
             },
         ),
     }
