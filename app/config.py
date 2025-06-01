@@ -14,6 +14,10 @@ class Config:
     UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER")
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024
 
+    LOG_FILE = os.environ.get("LOG_FILE", "app.log")
+    LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+    LOG_ROTATION_DAYS = int(os.environ.get("LOG_ROTATION_DAYS", "7"))
+
 
 class LocalConfig(Config):
     """Configuration for local development with a local MySQL database."""
@@ -25,3 +29,5 @@ class LocalConfig(Config):
     FLASK_DEBUG = True
 
     ENABLE_TCP_SERVER = os.environ.get("ENABLE_TCP_SERVER", "1") == "1"
+
+    LOG_LEVEL = "DEBUG"

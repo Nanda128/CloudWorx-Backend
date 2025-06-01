@@ -1,13 +1,33 @@
 import logging
 import os
+from logging.handlers import TimedRotatingFileHandler
 
 from app import create_app
 
 logger = logging.getLogger(__name__)
 
+log_file = "app.log"
+file_handler = TimedRotatingFileHandler(
+    log_file,
+    when="D",
+    interval=7,
+    backupCount=1,
+    encoding="utf-8",
+)
+file_handler.setLevel(logging.INFO)
+
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+file_handler.setFormatter(formatter)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        file_handler,
+        logging.StreamHandler(),
+    ],
 )
 
 app = create_app()
