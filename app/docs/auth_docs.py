@@ -134,10 +134,6 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 "token": fields.String(description="JWT token"),
                 "user_id": fields.String(description="User ID"),
                 "files": fields.List(fields.Nested(user_file_info_model)),
-                "salt": fields.String(description="Base64-encoded salt for password hashing"),
-                "p": fields.Integer(description="Argon2id parameter p"),
-                "m": fields.Integer(description="Argon2id parameter m"),
-                "t": fields.Integer(description="Argon2id parameter t"),
             },
         ),
         "retrieve_files_response_model": auth_ns.model(

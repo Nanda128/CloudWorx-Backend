@@ -381,9 +381,6 @@ class Login(Resource):
             PasswordHasher().verify(user.auth_password, data["entered_auth_password"])
         except VerifyMismatchError:
             return handle_error(Exception("Invalid authentication password!"), 401)
-        kek_data = UserKEK.query.filter_by(user_id=user.id).first()
-        if not kek_data:
-            return handle_error(Exception("User KEK not found!"), 404)
 
         files = File.query.filter_by(created_by=user.id).all()
         user_files_info = []
@@ -413,10 +410,6 @@ class Login(Resource):
             "token": token,
             "user_id": user.id,
             "files": user_files_info,
-            "salt": kek_data.salt,
-            "p": kek_data.p,
-            "m": kek_data.m,
-            "t": kek_data.t,
         }, 200
 
 
