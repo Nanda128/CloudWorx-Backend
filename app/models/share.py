@@ -1,4 +1,4 @@
-from datetime import datetime, timezone  # noqa: INP001
+from datetime import datetime, timezone
 
 from app import db
 

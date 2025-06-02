@@ -1,4 +1,4 @@
-from dataclasses import dataclass  # noqa: INP001
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app import db

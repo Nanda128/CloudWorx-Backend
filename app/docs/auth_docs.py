@@ -1,4 +1,4 @@
-from flask_restx import Namespace, fields  # noqa: INP001
+from flask_restx import Namespace, fields
 
 
 def register_auth_models(auth_ns: Namespace) -> dict:

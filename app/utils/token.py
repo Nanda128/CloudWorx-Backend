@@ -1,4 +1,4 @@
-from functools import wraps  # noqa: INP001
+from functools import wraps
 from typing import Callable
 
 import jwt

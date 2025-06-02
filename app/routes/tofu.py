@@ -1,4 +1,4 @@
-from flask import request  # noqa: INP001
+from flask import request
 from flask_restx import Namespace, Resource, fields
 
 from app.models.tofu import TrustedKey
