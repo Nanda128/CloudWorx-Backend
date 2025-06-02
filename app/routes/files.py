@@ -108,15 +108,16 @@ class FilesList(Resource):
             db.session.add(new_file)
             db.session.add(new_dek)
             db.session.commit()
-            return {  # noqa: TRY300
-                "message": "File uploaded successfully",
-                "file_id": file_id,
-                "file_name": file_name,
-            }, 201
         except (db.exc.SQLAlchemyError, OSError) as e:
             db.session.rollback()
             current_app.logger.exception("Error uploading file", exc_info=e)
             return {"message": f"Error uploading file: {str(e)!s}"}, 500
+        else:
+            return {
+                "message": "File uploaded successfully",
+                "file_id": file_id,
+                "file_name": file_name,
+            }, 201
 
 
 @files_ns.route("/<file_name>")
@@ -171,9 +172,10 @@ class FileResource(Resource):
             response.headers["X-File-IV"] = file.iv_file
             response.headers["X-File-Assoc-Data"] = file.assoc_data_file
             response.headers["X-File-DEK"] = share.encryped_dek if share and dek else ""
-            return response, 200  # noqa: TRY300
         except (db.exc.SQLAlchemyError, OSError) as e:
             return {"message": f"Error downloading file: {str(e)!s}"}, 500
+        else:
+            return response, 200
 
     @files_ns.doc(security="apikey")
     @files_ns.response(200, "File deleted successfully", models["delete_response_model"])
@@ -191,10 +193,11 @@ class FileResource(Resource):
 
             db.session.delete(file)
             db.session.commit()
-            return {"message": "File deleted successfully"}, 200  # noqa: TRY300
         except (db.exc.SQLAlchemyError, OSError) as e:
             db.session.rollback()
             return {"message": f"Error deleting file: {str(e)!s}"}, 500
+        else:
+            return {"message": "File deleted successfully"}, 200
 
 
 @files_ns.route("/resolve-id/<file_name>")

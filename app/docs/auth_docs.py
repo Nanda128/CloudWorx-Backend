@@ -70,6 +70,10 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                     required=True,
                     description="Authentication password (must be plaintext)",
                 ),
+                "file_info": fields.List(
+                    fields.Nested(user_file_info_model),
+                    description="List of all information about a file",
+                ),
             },
         ),
         "retrieve_files_model": auth_ns.model(
@@ -167,9 +171,9 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 "created_at": fields.String(description="ISO8601 user creation timestamp"),
                 "modified_at": fields.String(description="ISO8601 user modification timestamp"),
                 "key_id": fields.String(description="KEK key ID", required=False),
-                "iv_kek": fields.String(description="Base64-encoded IV for KEK", required=False),
-                "encrypted_kek": fields.String(description="Base64-encoded encrypted KEK", required=False),
-                "assoc_data_kek": fields.String(description="Associated data for KEK", required=False),
+                "iv_KEK": fields.String(description="Base64-encoded IV for KEK", required=False),
+                "encrypted_KEK": fields.String(description="Base64-encoded encrypted KEK", required=False),
+                "assoc_data_KEK": fields.String(description="Associated data for KEK", required=False),
                 "salt": fields.String(description="Base64-encoded salt for password hashing", required=False),
                 "p": fields.Integer(description="Argon2id parameter p", required=False),
                 "m": fields.Integer(description="Argon2id parameter m", required=False),
