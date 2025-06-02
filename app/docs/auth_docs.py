@@ -114,7 +114,10 @@ def register_auth_models(auth_ns: Namespace) -> dict:
         "delete_user_model": auth_ns.model(
             "DeleteUser",
             {
-                "password": fields.String(required=True),
+                "password": fields.String(
+                    required=True,
+                    description="User's authentication password (must be plaintext)",
+                ),
             },
         ),
         "user_file_info_model": user_file_info_model,
