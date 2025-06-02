@@ -46,7 +46,7 @@ def register_shares_models(shares_ns: Namespace) -> dict:
             "ShareRequest",
             {
                 "shared_with_username": fields.String(required=True, description="Username to share with"),
-                "password-derived-key": fields.String(required=True, description="Password-derived key for encryption"),
+                "password": fields.String(required=True, description="User's encryption password"),
             },
         ),
         "share_response_model": shares_ns.model(
