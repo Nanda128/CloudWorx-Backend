@@ -33,6 +33,8 @@ def token_required(f: Callable) -> Callable:
                         current_user = UserLogin.query.filter_by(id=data["user_id"]).first()
                         if not current_user:
                             error_response = ({"message": "User not found!"}, 401)
+                        elif args and hasattr(args[0], "__class__") and hasattr(args[0].__class__, "__name__"):
+                            return f(args[0], current_user, *args[1:], **kwargs)
                         else:
                             return f(current_user, *args, **kwargs)
                 except jwt.ExpiredSignatureError:
