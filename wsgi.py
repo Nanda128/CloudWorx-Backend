@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
     logger.info("Starting Flask application on %s:%s (debug=%s)", host, port, debug)
     try:
-        app.run(host=host, port=port, debug=debug)
+        app.run(host=host, port=port, debug=debug, ssl_context=("cert.pem", "key.pem"))
     except Exception:
         logger.exception("Failed to start Flask application")
         raise
