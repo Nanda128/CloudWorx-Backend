@@ -11,7 +11,7 @@ from app import db
 from app.docs.files_docs import register_files_models
 from app.models.file import File, FileDEK
 from app.models.share import FileShare
-from app.models.user import UserLogin
+from app.models.user import UserKEK, UserLogin
 from app.utils.token import token_required
 
 files_ns = Namespace("files", description="File upload, download, and management")
@@ -130,52 +130,65 @@ class FileResource(Resource):
     @token_required
     def get(self, current_user: UserLogin, file_name: str) -> tuple:
         """Download an encrypted file by name"""
+        response = None
         try:
             file = File.query.filter_by(file_name=file_name).first()
             if not file:
-                return {"message": "File not found"}, 404
-            is_owner = file.created_by == current_user.id
-            is_shared = False
-            dek = FileDEK.query.filter_by(file_id=file.file_id).first()
-            share = None
-            if not dek:
-                return {"message": "File encryption key not found"}, 404
-            if not is_owner:
-                share = FileShare.query.filter_by(file_id=file.file_id, shared_with=current_user.id).first()
-                if not share:
-                    return {"message": "Access denied"}, 403
-                is_shared = True
-            if not is_shared:
-                response = send_file(
-                    io.BytesIO(file.encrypted_file),
-                    mimetype="application/octet-stream",
-                    as_attachment=True,
-                    download_name=file.file_name,
-                )
-                response.headers["X-File-ID"] = file.file_id
-                response.headers["X-File-Name"] = file.file_name
-                response.headers["X-File-Type"] = file.file_type
-                response.headers["X-File-IV"] = file.iv_file
-                response.headers["X-File-Assoc-Data"] = file.assoc_data_file
-                response.headers["X-File-DEK"] = dek.encrypted_dek if dek else ""
-                response.headers["X-File-DEK-IV"] = dek.iv_dek if dek else ""
-                return response, 200
-            response = send_file(
-                io.BytesIO(file.encrypted_file),
-                mimetype="application/octet-stream",
-                as_attachment=True,
-                download_name=file.file_name,
-            )
-            response.headers["X-File-ID"] = file.file_id
-            response.headers["X-File-Name"] = file.file_name
-            response.headers["X-File-Type"] = file.file_type
-            response.headers["X-File-IV"] = file.iv_file
-            response.headers["X-File-Assoc-Data"] = file.assoc_data_file
-            response.headers["X-File-DEK"] = share.encryped_dek if share and dek else ""
+                response = ({"message": "File not found"}, 404)
+            else:
+                dek = FileDEK.query.filter_by(file_id=file.file_id).first()
+                if not dek:
+                    response = ({"message": "File encryption key not found"}, 404)
+                else:
+                    is_owner = file.created_by == current_user.id
+                    if not is_owner:
+                        share = FileShare.query.filter_by(file_id=file.file_id, shared_with=current_user.id).first()
+                        if not share:
+                            response = ({"message": "Access denied"}, 403)
+                        else:
+                            response = self.send_shared_file(file, dek, share)
+                    else:
+                        user_kek = UserKEK.query.filter_by(user_id=file.created_by).first()
+                        if not user_kek:
+                            response = ({"message": "User KEK not found"}, 404)
+                        else:
+                            response = self.send_owner_file(file, dek, user_kek)
         except (db.exc.SQLAlchemyError, OSError) as e:
-            return {"message": f"Error downloading file: {str(e)!s}"}, 500
-        else:
-            return response, 200
+            response = ({"message": f"Error downloading file: {str(e)!s}"}, 500)
+        return response
+
+    def send_owner_file(self, file: File, dek: FileDEK, user_kek: UserKEK) -> tuple:
+        resp = send_file(
+            io.BytesIO(file.encrypted_file),
+            mimetype="application/octet-stream",
+            as_attachment=True,
+            download_name=file.file_name,
+        )
+        resp.headers["X-File-ID"] = file.file_id
+        resp.headers["X-File-Name"] = file.file_name
+        resp.headers["X-File-Type"] = file.file_type
+        resp.headers["X-File-IV"] = file.iv_file
+        resp.headers["X-File-Assoc-Data"] = file.assoc_data_file
+        resp.headers["X-File-DEK"] = dek.encrypted_dek if dek else ""
+        resp.headers["X-File-DEK-IV"] = dek.iv_dek if dek else ""
+        resp.headers["X-User-Encrypted-KEK"] = user_kek.encrypted_kek if user_kek else ""
+        resp.headers["X-User-KEK-IV"] = user_kek.iv_kek if user_kek else ""
+        return resp, 200
+
+    def send_shared_file(self, file: File, dek: FileDEK, share: FileShare) -> tuple:
+        resp = send_file(
+            io.BytesIO(file.encrypted_file),
+            mimetype="application/octet-stream",
+            as_attachment=True,
+            download_name=file.file_name,
+        )
+        resp.headers["X-File-ID"] = file.file_id
+        resp.headers["X-File-Name"] = file.file_name
+        resp.headers["X-File-Type"] = file.file_type
+        resp.headers["X-File-IV"] = file.iv_file
+        resp.headers["X-File-Assoc-Data"] = file.assoc_data_file
+        resp.headers["X-File-DEK"] = share.encrypted_dek if share and dek else ""
+        return resp, 200
 
     @files_ns.doc(security="apikey")
     @files_ns.response(200, "File deleted successfully")
