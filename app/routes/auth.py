@@ -335,46 +335,6 @@ def decrypt_user_files(user: UserLogin, kek_data: UserKEK, password_derived_key:
     return decrypted_files
 
 
-@auth_ns.route("/retrieve-files")
-class RetrieveFiles(Resource):
-    @auth_ns.expect(models["retrieve_files_model"])
-    @auth_ns.marshal_with(models["retrieve_files_response_model"])
-    @auth_ns.response(200, "Files retrieved")
-    @auth_ns.response(400, "Validation error")
-    @auth_ns.response(404, "User not found")
-    def post(self) -> object:
-        """Retrieve files for a user"""
-        data = request.get_json()
-
-        error = validate_retrieve_files_data(data)
-        if error:
-            return handle_error(Exception(error), 400)
-
-        user, kek_data, error = get_user_and_kek(data["username"])
-        if error:
-            return handle_error(Exception(error), 404)
-
-        if not user or not kek_data:
-            return handle_error(Exception("User not found!" if not user else "User KEK not found!"), 404)
-
-        error = verify_password_and_kek(data["password_derived_key"], kek_data)
-        if error:
-            return handle_error(Exception(error), 401 if "password" in error else 500)
-
-        jwt_secret = current_app.config["JWT_SECRET_KEY"]
-        if not jwt_secret:
-            return handle_error(Exception("JWT secret key is not set in environment variables!"), 500)
-
-        token = jwt.encode(
-            {"user_id": user.id, "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)},
-            jwt_secret,
-        )
-
-        decrypted_files = decrypt_user_files(user, kek_data, data["password_derived_key"])
-
-        return {"token": token, "user_id": user.id, "username": user.username, "files": decrypted_files}, 200
-
-
 @auth_ns.route("/login")
 class Login(Resource):
     @auth_ns.expect(models["login_model"])
@@ -417,6 +377,7 @@ class Login(Resource):
 
 @auth_ns.route("/auth-password")
 class ChangeAuthPassword(Resource):
+    @auth_ns.doc(security="apikey")
     @auth_ns.expect(models["change_auth_password_model"])
     @auth_ns.response(200, "Authentication password changed successfully!")
     @auth_ns.response(400, "Validation error")
@@ -452,6 +413,7 @@ class ChangeAuthPassword(Resource):
 
 @auth_ns.route("/encryption-password")
 class ChangeEncryptionPassword(Resource):
+    @auth_ns.doc(security="apikey")
     @auth_ns.expect(models["change_encryption_password_model"])
     @auth_ns.response(200, "Encryption password changed successfully!")
     @auth_ns.response(400, "Validation error")
@@ -498,6 +460,7 @@ class ChangeEncryptionPassword(Resource):
 
 @auth_ns.route("/<user_id>")
 class DeleteUser(Resource):
+    @auth_ns.doc(security="apikey")
     @auth_ns.expect(models["delete_user_model"])
     @auth_ns.response(200, "User deleted successfully!")
     @auth_ns.response(400, "Missing required field")
@@ -526,6 +489,7 @@ class DeleteUser(Resource):
 
         return {"message": "User deleted successfully!"}, 200
 
+    @auth_ns.doc(security="apikey")
     @auth_ns.response(200, "User information returned")
     @auth_ns.response(404, "User not found")
     @auth_ns.marshal_with(models["get_user_info_response_model"])
@@ -533,7 +497,7 @@ class DeleteUser(Resource):
         """Get all information for a user, their KEK, and their files"""
         user = UserLogin.query.filter_by(id=user_id).first()
         if not user:
-            return handle_error(Exception("User not found!"), 404)
+            return {"message": "User not found!"}, 404
 
         kek = UserKEK.query.filter_by(user_id=user_id).first()
 
@@ -559,30 +523,30 @@ class DeleteUser(Resource):
             "public_key": user.public_key,
             "created_at": user.created_at.isoformat() if user.created_at else None,
             "modified_at": user.modified_at.isoformat() if user.modified_at else None,
+            "files": files_info,
         }
 
-        if kek and kek.kek_params:
+        if kek:
             user_info.update(
                 {
                     "key_id": kek.key_id,
-                    "iv_KEK": kek.kek_params.iv_kek,
-                    "encrypted_KEK": kek.kek_params.encrypted_kek,
-                    "assoc_data_KEK": kek.kek_params.assoc_data_kek,
-                    "salt": kek.kek_params.salt,
-                    "p": kek.kek_params.p,
-                    "m": kek.kek_params.m,
-                    "t": kek.kek_params.t,
+                    "iv_KEK": kek.iv_kek,
+                    "encrypted_KEK": kek.encrypted_kek,
+                    "assoc_data_KEK": kek.assoc_data_kek,
+                    "salt": kek.salt,
+                    "p": kek.p,
+                    "m": kek.m,
+                    "t": kek.t,
                     "kek_created_at": kek.created_at.isoformat() if kek.created_at else None,
                 },
             )
-
-        user_info["files"] = files_info
 
         return user_info, 200
 
 
 @auth_ns.route("/users")
 class GetAllUsers(Resource):
+    @auth_ns.doc(security="apikey")
     @auth_ns.marshal_with(models["get_all_users_response_model"])
     @auth_ns.response(200, "All users retrieved successfully")
     @auth_ns.response(500, "Server error")

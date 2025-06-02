@@ -76,12 +76,6 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 ),
             },
         ),
-        "retrieve_files_model": auth_ns.model(
-            "RetrieveFiles",
-            {
-                "username": fields.String(required=True),
-            },
-        ),
         "change_auth_password_model": auth_ns.model(
             "ChangeAuthPassword",
             {
