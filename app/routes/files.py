@@ -178,7 +178,7 @@ class FileResource(Resource):
             return response, 200
 
     @files_ns.doc(security="apikey")
-    @files_ns.response(200, "File deleted successfully", models["delete_response_model"])
+    @files_ns.response(200, "File deleted successfully")
     @files_ns.response(404, "File not found or access denied")
     @token_required
     def delete(self, current_user: UserLogin, file_name: str) -> tuple:

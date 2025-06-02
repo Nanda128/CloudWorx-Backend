@@ -4,6 +4,15 @@ from flask_restx import Namespace, fields  # noqa: INP001
 def register_files_models(files_ns: Namespace) -> dict:
     """Register models for file-related API endpoints"""
 
+    files_ns.authorizations = {
+        "apikey": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "Authorization",
+            "description": "JWT token in format: Bearer <token>",
+        },
+    }
+
     dek_data_model = files_ns.model(
         "DEKData",
         {
@@ -96,12 +105,6 @@ def register_files_models(files_ns: Namespace) -> dict:
                 "message": fields.String(description="Status message"),
                 "file_id": fields.String(description="ID of the uploaded file"),
                 "file_name": fields.String(description="Name of the uploaded file"),
-            },
-        ),
-        "delete_response_model": files_ns.model(
-            "DeleteResponse",
-            {
-                "message": fields.String(description="Status message"),
             },
         ),
         "file_id_response_model": files_ns.model(

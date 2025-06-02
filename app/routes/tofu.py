@@ -8,6 +8,15 @@ from app.utils.token import token_required
 
 tofu_ns = Namespace("tofu", description="TOFU key management")
 
+tofu_ns.authorizations = {
+    "apikey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "JWT token in format: Bearer <token>",
+    },
+}
+
 trusted_key_model = tofu_ns.model(
     "TrustedKey",
     {

@@ -2,6 +2,17 @@ from flask_restx import Namespace, fields  # noqa: INP001
 
 
 def register_auth_models(auth_ns: Namespace) -> dict:
+    """Register models for auth-related API endpoints"""
+
+    auth_ns.authorizations = {
+        "apikey": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "Authorization",
+            "description": "JWT token in format: Bearer <token>",
+        },
+    }
+
     user_file_info_model = auth_ns.model(
         "UserFileInfo",
         {

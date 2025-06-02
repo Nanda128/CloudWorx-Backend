@@ -4,6 +4,15 @@ from flask_restx import Namespace, fields  # noqa: INP001
 def register_shares_models(shares_ns: Namespace) -> dict:
     """Register models for share-related API endpoints"""
 
+    shares_ns.authorizations = {
+        "apikey": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "Authorization",
+            "description": "JWT token in format: Bearer <token>",
+        },
+    }
+
     shared_file_model = shares_ns.model(
         "SharedFileInfo",
         {

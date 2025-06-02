@@ -489,8 +489,7 @@ class DeleteUser(Resource):
 
         return {"message": "User deleted successfully!"}, 200
 
-    @auth_ns.doc(security="apikey")
-    @auth_ns.response(200, "User information returned")
+    @auth_ns.response(200, "User information returned", models["get_user_info_response_model"])
     @auth_ns.response(404, "User not found")
     @auth_ns.marshal_with(models["get_user_info_response_model"])
     def get(self, user_id: str) -> object:

@@ -168,3 +168,4 @@ local.properties
 
 test_api_connection.py
 test_script.py
+app.log
