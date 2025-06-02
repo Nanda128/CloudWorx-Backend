@@ -29,7 +29,7 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 "username": fields.String(required=True),
                 "auth_password": fields.String(
                     required=True,
-                    description="Authentication password (must be hashed with Argon2id before sending)",
+                    description="Authentication password",
                 ),
                 "email": fields.String(required=True),
                 "public_key": fields.String(
@@ -66,7 +66,10 @@ def register_auth_models(auth_ns: Namespace) -> dict:
             "Login",
             {
                 "username": fields.String(required=True),
-                "entered_auth_password": fields.String(required=True),
+                "entered_auth_password": fields.String(
+                    required=True,
+                    description="Authentication password (must be plaintext)",
+                ),
             },
         ),
         "retrieve_files_model": auth_ns.model(

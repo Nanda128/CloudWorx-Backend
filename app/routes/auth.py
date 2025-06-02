@@ -8,6 +8,7 @@ import uuid
 
 import jwt
 from argon2 import PasswordHasher
+from argon2 import Type as Argon2Type
 from argon2.exceptions import VerifyMismatchError
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import serialization
@@ -187,7 +188,21 @@ class Register(Resource):
 
             user_id = str(uuid.uuid4())
 
-            new_user = UserLogin(user_id, data["username"], data["auth_password"], data["email"], data["public_key"])
+            argon2_p = int(current_app.config.get("ARGON2_PARALLELISM", 2))
+            argon2_m = int(current_app.config.get("ARGON2_MEMORY_COST", 65536))
+            argon2_t = int(current_app.config.get("ARGON2_TIME_COST", 3))
+
+            ph = PasswordHasher(
+                time_cost=argon2_t,
+                memory_cost=argon2_m,
+                parallelism=argon2_p,
+                hash_len=32,
+                salt_len=16,
+                type=Argon2Type.ID,
+            )
+            hashed_password = ph.hash(data["auth_password"])
+
+            new_user = UserLogin(user_id, data["username"], hashed_password, data["email"], data["public_key"])
 
             new_kek = UserKEK(
                 key_id=str(uuid.uuid4()),
