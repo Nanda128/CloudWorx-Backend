@@ -74,11 +74,6 @@ def validate_iv(iv: str) -> tuple[bool, str]:
         return True, ""
 
 
-def handle_error(error: Exception | str, code: int = 500) -> tuple:
-    """Handle errors and return a JSON response"""
-    return {"message": str(error) if not isinstance(error, str) else error}, code
-
-
 def check_fields(
     data: dict,
     required: list[str] | None = None,
@@ -168,7 +163,7 @@ class Register(Resource):
             error = validate_register_data(data)
             if error:
                 current_app.logger.warning("Registration validation error: %s", error)
-                return handle_error(error, 400 if error != "Username already exists!" else 409)
+                return {"message": error}, 400
 
             user_id = str(uuid.uuid4())
 
@@ -214,7 +209,7 @@ class Register(Resource):
                     db.session.delete(new_kek)
                     db.session.delete(new_user)
                     db.session.commit()
-                    return handle_error(f"Key verification failed: {tofu_message}", 400)
+                    return {"message": tofu_message}, 400
 
                 key_fingerprint = calculate_key_fingerprint(decoded_public_key)
                 current_app.logger.info(
@@ -289,20 +284,20 @@ class Login(Resource):
 
         for field in ["username", "entered_auth_password"]:
             if field not in data:
-                return handle_error(Exception(f"Missing required field: {field}"), 400)
+                return {"message": f"Missing required field: {field}"}, 400
 
         user = UserLogin.query.filter_by(username=data["username"]).first()
         if not user:
-            return handle_error(Exception("Invalid username!"), 404)
+            return {"message": "Invalid username!"}, 404
 
         try:
             PasswordHasher().verify(user.auth_password, data["entered_auth_password"])
         except VerifyMismatchError:
-            return handle_error(Exception("Invalid authentication password!"), 401)
+            return {"message": "Invalid authentication password!"}, 401
 
         jwt_secret = current_app.config["JWT_SECRET_KEY"]
         if not jwt_secret:
-            return handle_error(Exception("JWT secret key is not set in environment variables!"), 500)
+            return {"message": "JWT secret key is not set in environment variables!"}, 500
 
         token = jwt.encode(
             {"user_id": user.id, "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)},
@@ -330,19 +325,19 @@ class ChangeAuthPassword(Resource):
 
         for field in ["username", "old_auth_password", "new_auth_password"]:
             if field not in data:
-                return handle_error(Exception(f"Missing required field: {field}"), 400)
+                return {"message": f"Missing required field: {field}"}, 400
 
         user = UserLogin.query.filter_by(username=data["username"]).first()
         if not user:
-            return handle_error(Exception("Invalid username or user not found!"), 404)
+            return {"message": "Invalid username or user not found!"}, 404
 
         try:
             PasswordHasher().verify(user.auth_password, data["old_auth_password"])
         except VerifyMismatchError:
-            return handle_error(Exception("Invalid old authentication password!"), 401)
+            return {"message": "Invalid old authentication password!"}, 401
 
         if data["old_auth_password"] == data["new_auth_password"]:
-            return handle_error(Exception("New authentication password must be different from the old one"), 400)
+            return {"message": "New authentication password cannot be the same as the old one!"}, 400
 
         user.auth_password = data["new_auth_password"]
 
@@ -377,19 +372,19 @@ class ChangeEncryptionPassword(Resource):
             iv_fields=["new_iv_KEK"],
         )
         if error:
-            return handle_error(Exception(error), 400)
+            return {"message": error}, 400
 
         user = UserLogin.query.filter_by(username=data["username"]).first()
         if not user:
-            return handle_error(Exception("User not found!"), 404)
+            return {"message": "User not found!"}, 404
         kek_data = UserKEK.query.filter_by(user_id=user.id).first()
         if not kek_data:
-            return handle_error(Exception("User KEK not found!"), 404)
+            return {"message": "User KEK not found!"}, 404
 
         error = verify_password_and_kek(data["old_password_derived_key"], kek_data)
         if error:
             code = 401 if "password" in error or "Authentication failed" in error else 400
-            return handle_error(Exception(error), code)
+            return {"message": error}, code
 
         kek_data.iv_KEK = data["new_iv_KEK"]
         kek_data.encrypted_KEK = data["new_encrypted_KEK"]
@@ -411,16 +406,16 @@ class DeleteUser(Resource):
         """Delete a user and their KEK after verifying password"""
         data = request.get_json()
         if not data or "password" not in data:
-            return handle_error(Exception("Missing required field: password"), 400)
+            return {"message": "Missing required field: password"}, 400
 
         user = UserLogin.query.filter_by(id=user_id).first()
         if not user:
-            return handle_error(Exception("User not found!"), 404)
+            return {"message": "User not found!"}, 404
 
         try:
             PasswordHasher().verify(user.auth_password, data["password"])
         except VerifyMismatchError:
-            return handle_error(Exception("Invalid password!"), 401)
+            return {"message": "Invalid password!"}, 401
 
         kek = UserKEK.query.filter_by(user_id=user_id).first()
         if kek:
@@ -487,9 +482,9 @@ class GetAllUsers(Resource):
             ]
         except SQLAlchemyError as e:
             current_app.logger.exception("Database error retrieving users", exc_info=e)
-            return handle_error(f"Error retrieving users: {e!s}", 500)
+            return {"message": "Database error retrieving users"}, 500
         except Exception as e:
             current_app.logger.exception("Unexpected error retrieving users", exc_info=e)
-            return handle_error("Server error retrieving users", 500)
+            return {"message": "Server error retrieving users"}, 500
         else:
             return {"users": users_list}, 200
