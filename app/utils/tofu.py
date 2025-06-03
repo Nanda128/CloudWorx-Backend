@@ -32,7 +32,6 @@ def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, Trust
     try:
         fingerprint = calculate_key_fingerprint(public_key_pem)
 
-        # Check if we've seen this key before
         trusted_key = TrustedKey.query.filter_by(
             user_id=user_id,
             key_fingerprint=fingerprint,
