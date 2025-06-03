@@ -23,16 +23,6 @@ def register_auth_models(auth_ns: Namespace) -> dict:
         },
     )
 
-    decrypted_file_model = auth_ns.model(
-        "DecryptedFile",
-        {
-            "file_id": fields.String(description="File ID"),
-            "file_name": fields.String(description="File name"),
-            "decrypted_content": fields.String(description="Base64-encoded decrypted file content"),
-            "created_at": fields.String(description="ISO8601 creation timestamp"),
-        },
-    )
-
     return {
         "register_model": auth_ns.model(
             "Register",
@@ -86,7 +76,6 @@ def register_auth_models(auth_ns: Namespace) -> dict:
         "change_auth_password_model": auth_ns.model(
             "ChangeAuthPassword",
             {
-                "username": fields.String(required=True),
                 "old_auth_password": fields.String(
                     required=True,
                     description="Old authentication password (must not be hashed)",
@@ -100,7 +89,6 @@ def register_auth_models(auth_ns: Namespace) -> dict:
         "change_encryption_password_model": auth_ns.model(
             "ChangeEncryptionPassword",
             {
-                "username": fields.String(required=True),
                 "old_password_derived_key": fields.String(
                     required=True,
                     description="Argon2ID hash of the old password",
@@ -134,15 +122,6 @@ def register_auth_models(auth_ns: Namespace) -> dict:
             {
                 "token": fields.String(description="JWT token"),
                 "user_id": fields.String(description="User ID"),
-            },
-        ),
-        "retrieve_files_response_model": auth_ns.model(
-            "RetrieveFilesResponse",
-            {
-                "token": fields.String(description="JWT token"),
-                "user_id": fields.String(description="User ID"),
-                "username": fields.String(description="Username"),
-                "files": fields.List(fields.Nested(decrypted_file_model)),
             },
         ),
         "get_all_users_response_model": auth_ns.model(

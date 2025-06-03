@@ -318,15 +318,15 @@ class ChangeAuthPassword(Resource):
     @auth_ns.response(401, "Invalid old authentication password")
     @auth_ns.response(404, "Invalid username or user not found")
     @token_required
-    def put(self) -> object:
+    def put(self, current_user: UserLogin) -> object:
         """Change the authentication password for a user"""
         data = request.get_json()
 
-        for field in ["username", "old_auth_password", "new_auth_password"]:
+        for field in ["old_auth_password", "new_auth_password"]:
             if field not in data:
                 return {"message": f"Missing required field: {field}"}, 400
 
-        user = UserLogin.query.filter_by(username=data["username"]).first()
+        user = UserLogin.query.filter_by(username=current_user.id).first()
         if not user:
             return {"message": "Invalid username or user not found!"}, 404
 
@@ -354,14 +354,13 @@ class ChangeEncryptionPassword(Resource):
     @auth_ns.response(401, "Invalid password")
     @auth_ns.response(404, "User not found")
     @token_required
-    def put(self) -> object:
+    def put(self, current_user: UserLogin) -> object:
         """Change the encryption password for a user"""
         data = request.get_json()
 
         error = check_fields(
             data,
             required=[
-                "username",
                 "old_password_derived_key",
                 "new_password_derived_key",
                 "new_iv_KEK",
@@ -373,7 +372,7 @@ class ChangeEncryptionPassword(Resource):
         if error:
             return {"message": error}, 400
 
-        user = UserLogin.query.filter_by(username=data["username"]).first()
+        user = UserLogin.query.filter_by(username=current_user.id).first()
         if not user:
             return {"message": "User not found!"}, 404
         kek_data = UserKEK.query.filter_by(user_id=user.id).first()
