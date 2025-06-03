@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import binascii
 import hashlib
 
 from cryptography.hazmat.primitives import serialization
@@ -14,10 +12,7 @@ from app.models.tofu import TrustedKey, TrustStatus
 def calculate_key_fingerprint(public_key_pem: str) -> str:
     """Calculate SHA256 fingerprint of a public key"""
     try:
-        pem_bytes = base64.b64decode(public_key_pem)
-        pem_string = pem_bytes.decode("utf-8")
-
-        key = serialization.load_pem_public_key(pem_string.encode("utf-8"))
+        key = serialization.load_pem_public_key(public_key_pem.encode("utf-8"))
         key_der = key.public_bytes(
             encoding=serialization.Encoding.DER,
             format=serialization.PublicFormat.SubjectPublicKeyInfo,
@@ -66,7 +61,7 @@ def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, Trust
             fingerprint,
         )
 
-    except (ValueError, TypeError, binascii.Error) as e:
+    except (ValueError, TypeError) as e:
         current_app.logger.exception("TOFU verification failed")
         return False, f"TOFU verification error: {e!s}", None
     else:
