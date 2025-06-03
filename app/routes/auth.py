@@ -273,8 +273,7 @@ def verify_password_and_kek(password_derived_key: str, kek_data: UserKEK) -> str
 @auth_ns.route("/login")
 class Login(Resource):
     @auth_ns.expect(models["login_model"])
-    @auth_ns.marshal_with(models["login_info_model"])
-    @auth_ns.response(200, "Login successful")
+    @auth_ns.response(200, "Login successful", models["login_info_model"])
     @auth_ns.response(400, "Missing required field")
     @auth_ns.response(404, "Invalid username")
     @auth_ns.response(401, "Invalid authentication password")
@@ -427,7 +426,6 @@ class DeleteUser(Resource):
 
     @auth_ns.response(200, "User information returned", models["get_user_info_response_model"])
     @auth_ns.response(404, "User not found")
-    @auth_ns.marshal_with(models["get_user_info_response_model"])
     def get(self, user_id: str) -> object:
         """Get all information for a user, their KEK, and their files"""
         user = UserLogin.query.filter_by(id=user_id).first()
@@ -465,8 +463,7 @@ class DeleteUser(Resource):
 
 @auth_ns.route("/users")
 class GetAllUsers(Resource):
-    @auth_ns.marshal_with(models["get_all_users_response_model"])
-    @auth_ns.response(200, "All users retrieved successfully")
+    @auth_ns.response(200, "All users retrieved successfully", ["get_all_users_response_model"])
     @auth_ns.response(500, "Server error")
     def get(self) -> object:
         """Get all usernames and emails"""

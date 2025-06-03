@@ -27,8 +27,7 @@ def allowed_file(filename: str) -> bool:
 @files_ns.route("")
 class FilesList(Resource):
     @files_ns.doc(security="apikey")
-    @files_ns.marshal_with(models["files_list_model"])
-    @files_ns.response(200, "Files retrieved successfully")
+    @files_ns.response(200, "Files retrieved successfully", models["files_list_model"])
     @token_required
     def get(self, current_user: UserLogin) -> tuple:
         """Get info on all files owned by the current user"""
@@ -66,7 +65,6 @@ class FilesList(Resource):
 
     @files_ns.doc(security="apikey")
     @files_ns.expect(models["file_upload_model"])
-    @files_ns.marshal_with(models["upload_response_model"])
     @files_ns.response(201, "File uploaded successfully", models["upload_response_model"])
     @files_ns.response(400, "Validation error")
     @token_required

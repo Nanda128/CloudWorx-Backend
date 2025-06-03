@@ -1,6 +1,7 @@
 from flask import request
-from flask_restx import Namespace, Resource, fields
+from flask_restx import Namespace, Resource
 
+from app.docs.tofu_docs import register_tofu_models
 from app.models.tofu import TrustedKey
 from app.models.user import UserLogin
 from app.utils.tofu import revoke_user_key
@@ -8,40 +9,13 @@ from app.utils.token import token_required
 
 tofu_ns = Namespace("tofu", description="TOFU key management")
 
-tofu_ns.authorizations = {
-    "apikey": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "Authorization",
-        "description": "JWT token in format: Bearer <token>",
-    },
-}
-
-trusted_key_model = tofu_ns.model(
-    "TrustedKey",
-    {
-        "id": fields.String(description="Key ID"),
-        "key_fingerprint": fields.String(description="SHA256 fingerprint"),
-        "first_seen": fields.String(description="First seen timestamp"),
-        "last_verified": fields.String(description="Last verified timestamp"),
-        "trust_status": fields.String(description="Trust status"),
-        "verification_count": fields.Integer(description="Number of verifications"),
-    },
-)
+models = register_tofu_models(tofu_ns)
 
 
 @tofu_ns.route("/keys")
 class TrustedKeysList(Resource):
     @tofu_ns.doc(security="apikey")
-    @tofu_ns.marshal_with(
-        tofu_ns.model(
-            "TrustedKeysList",
-            {
-                "keys": fields.List(fields.Nested(trusted_key_model)),
-                "count": fields.Integer(description="Total number of trusted keys"),
-            },
-        ),
-    )
+    @tofu_ns.response(200, "Trusted keys retrieved successfully", models["trusted_keys_list_model"])
     @token_required
     def get(self, current_user: UserLogin) -> tuple:
         """Get all trusted keys for the current user"""
@@ -78,15 +52,8 @@ class RevokeKey(Resource):
 @tofu_ns.route("/verify")
 class VerifyKey(Resource):
     @tofu_ns.doc(security="apikey")
-    @tofu_ns.expect(
-        tofu_ns.model(
-            "VerifyKeyRequest",
-            {
-                "public_key": fields.String(required=True, description="Base64-encoded public key"),
-            },
-        ),
-    )
-    @tofu_ns.response(200, "Key verification result")
+    @tofu_ns.expect(models["verify_key_request_model"])
+    @tofu_ns.response(200, "Key verification result", models["verify_key_response_model"])
     @token_required
     def post(self, current_user: UserLogin) -> tuple:
         """Manually verify a public key"""

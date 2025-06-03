@@ -182,7 +182,7 @@ class FileShareResource(Resource):
         }, 201
 
     @shares_ns.doc(security="apikey")
-    @shares_ns.marshal_with(models["share_list_model"])
+    @shares_ns.response(200, "List of shares retrieved successfully", models["share_list_model"])
     @token_required
     def get(self, current_user: UserLogin, file_id: str) -> tuple:
         """List users this file is shared with, including file info"""
@@ -208,7 +208,6 @@ class FileShareResource(Resource):
         return {"shares": share_list, "count": len(share_list)}, 200
 
     @shares_ns.doc(security="apikey")
-    @shares_ns.expect(models["revoke_request_model"])
     @shares_ns.response(200, "Access revoked", models["revoke_response_model"])
     @shares_ns.response(404, "File or share not found")
     @token_required
@@ -233,7 +232,7 @@ class FileShareResource(Resource):
 @shares_ns.param("user_id", "The user identifier")
 class FilesSharedWithMe(Resource):
     @shares_ns.doc(security="apikey")
-    @shares_ns.marshal_with(models["files_list_model"])
+    @shares_ns.response(200, "Files shared with the user retrieved successfully", models["files_list_model"])
     @token_required
     def get(self, current_user: UserLogin) -> tuple:
         """Get all files shared with the specified user"""
