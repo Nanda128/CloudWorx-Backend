@@ -168,10 +168,7 @@ class Register(Resource):
             )
             hashed_password = ph.hash(data["auth_password"])
 
-            public_key_bytes = (
-                data["public_key"].encode("utf-8") if isinstance(data["public_key"], str) else data["public_key"]
-            )
-            pem_public_key = b"-----BEGIN PUBLIC KEY-----\n" + base64.encodebytes(public_key_bytes).replace(
+            pem_public_key = b"-----BEGIN PUBLIC KEY-----\n" + base64.encodebytes(data["public_key"]).replace(
                 b"\n",
                 b"",
             ).replace(b"\r", b"").replace(b" ", b"").replace(b"\t", b"").replace(b"\x0b", b"").replace(b"\x0c", b"")
