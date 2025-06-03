@@ -391,7 +391,7 @@ class ChangeEncryptionPassword(Resource):
         return {"message": "Encryption password changed successfully!"}, 200
 
 
-@auth_ns.route("/<user_id>")
+@auth_ns.route("/user_info")
 class DeleteUser(Resource):
     @auth_ns.doc(security="apikey")
     @auth_ns.expect(models["delete_user_model"])
@@ -400,13 +400,13 @@ class DeleteUser(Resource):
     @auth_ns.response(401, "Invalid password")
     @auth_ns.response(404, "User not found")
     @token_required
-    def delete(self, user_id: str) -> object:
+    def delete(self, current_user: UserLogin) -> object:
         """Delete a user and their KEK after verifying password"""
         data = request.get_json()
         if not data or "password" not in data:
             return {"message": "Missing required field: password"}, 400
 
-        user = UserLogin.query.filter_by(id=user_id).first()
+        user = UserLogin.query.filter_by(id=current_user.id).first()
         if not user:
             return {"message": "User not found!"}, 404
 
@@ -415,7 +415,7 @@ class DeleteUser(Resource):
         except VerifyMismatchError:
             return {"message": "Invalid password!"}, 401
 
-        kek = UserKEK.query.filter_by(user_id=user_id).first()
+        kek = UserKEK.query.filter_by(user_id=current_user.id).first()
         if kek:
             db.session.delete(kek)
         db.session.delete(user)
@@ -427,13 +427,13 @@ class DeleteUser(Resource):
     @auth_ns.response(404, "User not found")
     @token_required
     @auth_ns.doc(security="apikey")
-    def get(self, user_id: str) -> object:
+    def get(self, current_user: UserLogin) -> object:
         """Get all information for a user, their KEK, and their files"""
-        user = UserLogin.query.filter_by(id=user_id).first()
+        user = UserLogin.query.filter_by(id=current_user.id).first()
         if not user:
             return {"message": "User not found!"}, 404
 
-        kek = UserKEK.query.filter_by(user_id=user_id).first()
+        kek = UserKEK.query.filter_by(user_id=current_user.id).first()
 
         user_info = {
             "user_id": user.id,
