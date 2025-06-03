@@ -425,6 +425,8 @@ class DeleteUser(Resource):
 
     @auth_ns.response(200, "User information returned", models["get_user_info_response_model"])
     @auth_ns.response(404, "User not found")
+    @token_required
+    @auth_ns.doc(security="apikey")
     def get(self, user_id: str) -> object:
         """Get all information for a user, their KEK, and their files"""
         user = UserLogin.query.filter_by(id=user_id).first()
