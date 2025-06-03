@@ -14,16 +14,19 @@ from app.models.tofu import TrustedKey, TrustStatus
 def calculate_key_fingerprint(public_key_pem: str) -> str:
     """Calculate SHA256 fingerprint of a public key"""
     try:
-        public_key_bytes = base64.b64decode(public_key_pem)
-        key = serialization.load_pem_public_key(public_key_bytes)
+        pem_bytes = base64.b64decode(public_key_pem)
+        pem_string = pem_bytes.decode("utf-8")
+
+        key = serialization.load_pem_public_key(pem_string.encode("utf-8"))
         key_der = key.public_bytes(
             encoding=serialization.Encoding.DER,
             format=serialization.PublicFormat.SubjectPublicKeyInfo,
         )
         return hashlib.sha256(key_der).hexdigest()
-    except Exception:
+    except Exception as e:
         current_app.logger.exception("Failed to calculate key fingerprint")
-        raise
+        msg = "Invalid public key format"
+        raise ValueError(msg) from e
 
 
 def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, TrustedKey | None]:

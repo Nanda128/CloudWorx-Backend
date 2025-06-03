@@ -126,6 +126,7 @@ def is_base64_and_pem_encoded_public_key(public_key: str) -> bool:
     except (binascii.Error, ValueError, UnicodeDecodeError):
         return False
 
+
 def validate_register_data(data: dict) -> str | None:
     error = check_fields(
         data,
@@ -200,16 +201,13 @@ class Register(Resource):
             )
 
             try:
+                is_trusted, tofu_message, _ = verify_tofu_key(user_id, data["public_key"])
+                if not is_trusted:
+                    return handle_error(f"Key verification failed: {tofu_message}", 400)
+
                 db.session.add(new_user)
                 db.session.add(new_kek)
                 db.session.commit()
-
-                is_trusted, tofu_message, _ = verify_tofu_key(user_id, data["public_key"])
-                if not is_trusted:
-                    db.session.delete(new_user)
-                    db.session.delete(new_kek)
-                    db.session.commit()
-                    return handle_error(f"Key verification failed: {tofu_message}", 400)
 
                 key_fingerprint = calculate_key_fingerprint(data["public_key"])
                 current_app.logger.info(
@@ -314,6 +312,7 @@ def decrypt_user_files(user: UserLogin, kek_data: UserKEK, password_derived_key:
             },
         )
     return decrypted_files
+
 
 @auth_ns.route("/login")
 class Login(Resource):
