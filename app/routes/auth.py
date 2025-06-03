@@ -217,6 +217,7 @@ class Register(Resource):
                     user_id,
                     key_fingerprint,
                 )
+                jwt_token = generate_jwt_token(user_id)
 
             except SQLAlchemyError as e:
                 db.session.rollback()
@@ -232,6 +233,7 @@ class Register(Resource):
                 "user_id": user_id,
                 "key_fingerprint": key_fingerprint,
                 "tofu_message": tofu_message,
+                "token": jwt_token,
             }, 201
 
 
@@ -270,6 +272,21 @@ def verify_password_and_kek(password_derived_key: str, kek_data: UserKEK) -> str
     return None
 
 
+def generate_jwt_token(user_id: str) -> str:
+    """Generate a JWT token for a user"""
+    jwt_secret = current_app.config.get("JWT_SECRET_KEY")
+    if not jwt_secret:
+        error_message = "JWT secret key is not set in environment variables!"
+        raise RuntimeError(error_message)
+    return jwt.encode(
+        {
+            "user_id": user_id,
+            "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3),
+        },
+        jwt_secret,
+    )
+
+
 @auth_ns.route("/login")
 class Login(Resource):
     @auth_ns.expect(models["login_model"])
@@ -294,14 +311,10 @@ class Login(Resource):
         except VerifyMismatchError:
             return {"message": "Invalid authentication password!"}, 401
 
-        jwt_secret = current_app.config["JWT_SECRET_KEY"]
-        if not jwt_secret:
-            return {"message": "JWT secret key is not set in environment variables!"}, 500
-
-        token = jwt.encode(
-            {"user_id": user.id, "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3)},
-            jwt_secret,
-        )
+        try:
+            token = generate_jwt_token(user.id)
+        except RuntimeError as e:
+            return {"message": str(e)}, 500
 
         return {
             "token": token,
