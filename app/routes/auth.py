@@ -441,6 +441,7 @@ class DeleteUser(Resource):
     @auth_ns.response(400, "Missing required field")
     @auth_ns.response(401, "Invalid password")
     @auth_ns.response(404, "User not found")
+    @token_required
     def delete(self, user_id: str) -> object:
         """Delete a user and their KEK after verifying password"""
         data = request.get_json()
@@ -504,7 +505,6 @@ class DeleteUser(Resource):
 
 @auth_ns.route("/users")
 class GetAllUsers(Resource):
-    @auth_ns.doc(security="apikey")
     @auth_ns.marshal_with(models["get_all_users_response_model"])
     @auth_ns.response(200, "All users retrieved successfully")
     @auth_ns.response(500, "Server error")
