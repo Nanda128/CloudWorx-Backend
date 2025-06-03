@@ -20,7 +20,6 @@ from app import db
 from app.docs.auth_docs import register_auth_models
 from app.models.file import File, FileDEK
 from app.models.user import UserKEK, UserLogin
-from app.utils.crypto import format_public_key_to_pem
 from app.utils.tofu import calculate_key_fingerprint, verify_tofu_key
 from app.utils.token import token_required
 
@@ -165,10 +164,16 @@ class Register(Resource):
             )
             hashed_password = ph.hash(data["auth_password"])
 
-            try:
-                data["public_key"] = format_public_key_to_pem(data["public_key"])
-            except ValueError as e:
-                return handle_error(f"Invalid public key format: {e}", 400)
+            public_key_bytes = (
+                data["public_key"].encode("utf-8") if isinstance(data["public_key"], str) else data["public_key"]
+            )
+            pem_public_key = b"-----BEGIN PUBLIC KEY-----\n" + base64.encodebytes(public_key_bytes).replace(
+                b"\n",
+                b"",
+            ).replace(b"\r", b"").replace(b" ", b"").replace(b"\t", b"").replace(b"\x0b", b"").replace(b"\x0c", b"")
+            pem_lines = [pem_public_key[i : i + 64] for i in range(0, len(pem_public_key), 64)]
+            pem_public_key = b"\n".join(pem_lines) + b"\n-----END PUBLIC KEY-----\n"
+            data["public_key"] = pem_public_key.decode("utf-8")
 
             new_user = UserLogin(user_id, data["username"], hashed_password, data["email"], data["public_key"])
 
