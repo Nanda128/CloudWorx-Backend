@@ -250,7 +250,7 @@ def validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, 
             file_name = request.headers.get("X-File-Name")
             if not file_name:
                 file_name = secure_filename(file.filename or "")
-            file_name = escape(file_name)
+            file_name = str(escape(file_name))
 
             iv_file = request.headers.get("X-IV-File")
             file_type = request.headers.get("X-File-Type")

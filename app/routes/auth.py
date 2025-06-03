@@ -11,8 +11,6 @@ from argon2 import PasswordHasher
 from argon2 import Type as Argon2Type
 from argon2.exceptions import VerifyMismatchError
 from cryptography.exceptions import InvalidTag
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from flask import Blueprint, current_app, request
 from flask_restx import Namespace, Resource
@@ -134,39 +132,7 @@ def validate_register_data(data: dict) -> str | None:
             return "Invalid encrypted_KEK format"
     except (binascii.Error, ValueError):
         return "Invalid encrypted_KEK format"
-    current_app.logger.info("Validating public key")
-    error = validate_public_key(data["public_key"])
-    if error:
-        return error
     return None
-
-
-def validate_public_key(public_key: str) -> str | None:
-    try:
-        public_key_bytes = base64.b64decode(public_key)
-
-        try:
-            decoded_str = public_key_bytes.decode("utf-8", errors="replace")
-            if decoded_str.startswith("ssh-ed25519"):
-                return (
-                    "SSH format keys are not supported. Please provide an Ed25519 key in PEM format "
-                    "(Encoded in Base64)."
-                )
-        except UnicodeDecodeError:
-            pass
-
-        try:
-            loaded_public_key = serialization.load_pem_public_key(public_key_bytes)
-            if not isinstance(loaded_public_key, Ed25519PublicKey):
-                return "Public key must be an Ed25519 public key in PEM format"
-        except (ValueError, TypeError) as e:
-            current_app.logger.exception("Public key validation error", exc_info=e)
-            return f"Invalid public key format: {e!s}"
-        else:
-            return None
-    except (binascii.Error, ValueError) as e:
-        current_app.logger.exception("Base64 decoding error for public key", exc_info=e)
-        return f"Invalid base64 encoding for public_key: {e!s}"
 
 
 @auth_ns.route("/register")
@@ -188,8 +154,8 @@ class Register(Resource):
 
             user_id = str(uuid.uuid4())
 
-            argon2_p = int(current_app.config.get("ARGON2_PARALLELISM", 2))
-            argon2_m = int(current_app.config.get("ARGON2_MEMORY_COST", 65536))
+            argon2_p = int(current_app.config.get("ARGON2_PARALLELISM", 1))
+            argon2_m = int(current_app.config.get("ARGON2_MEMORY_COST", 12288))
             argon2_t = int(current_app.config.get("ARGON2_TIME_COST", 3))
 
             ph = PasswordHasher(
@@ -201,6 +167,15 @@ class Register(Resource):
                 type=Argon2Type.ID,
             )
             hashed_password = ph.hash(data["auth_password"])
+
+            public_key_bytes = base64.b64decode(data["public_key"])
+            pem_public_key = b"-----BEGIN PUBLIC KEY-----\n" + base64.encodebytes(public_key_bytes).replace(
+                b"\n",
+                b"",
+            ).replace(b"\r", b"").replace(b" ", b"").replace(b"\t", b"").replace(b"\x0b", b"").replace(b"\x0c", b"")
+            pem_lines = [pem_public_key[i : i + 64] for i in range(0, len(pem_public_key), 64)]
+            pem_public_key = b"\n".join(pem_lines) + b"\n-----END PUBLIC KEY-----\n"
+            data["public_key"] = pem_public_key.decode("utf-8")
 
             new_user = UserLogin(user_id, data["username"], hashed_password, data["email"], data["public_key"])
 

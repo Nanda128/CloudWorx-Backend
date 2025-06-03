@@ -56,7 +56,7 @@ class File(db.Model):
         self.file_name = file_params.file_name
         self.iv_file = file_params.iv_file
         self.encrypted_file = file_params.encrypted_file
-        self.assoc_data_file = "File {file_name} with ID {file_id} created by {created_by}"
+        self.assoc_data_file = f"File {file_params.file_name} with ID {file_params.file_id} created by {created_by}"
         self.created_by = created_by
         self.created_at = datetime.now(timezone.utc)
         self.file_type = file_params.file_type
@@ -95,7 +95,7 @@ class FileDEK(db.Model):
         self.file_id = file_id
         self.iv_dek = iv_dek
         self.encrypted_dek = encrypted_dek
-        self.assoc_data_dek = "DEK for file ID {file_id} with key ID {key_id}"
+        self.assoc_data_dek = f"DEK for file ID {file_id} with key ID {key_id}"
         self.created_at = datetime.now(timezone.utc)
 
     def __repr__(self) -> str:
