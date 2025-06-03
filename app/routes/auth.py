@@ -134,21 +134,24 @@ def validate_register_data(data: dict) -> str | None:
         base64_fields=["iv_KEK", "encrypted_KEK", "public_key"],
         iv_fields=["iv_KEK"],
     )
-    if error:
-        return error
-    current_app.logger.info("Checking email & username")
-    error = check_email_and_username(data["email"], data["username"])
-    if error:
-        return error
-    current_app.logger.info("Validating KEK")
-    try:
-        if not base64.b64decode(data["encrypted_KEK"]):
-            return "Invalid encrypted_KEK format"
-    except (binascii.Error, ValueError):
-        return "Invalid encrypted_KEK format"
-    if not is_base64_and_pem_encoded_public_key(data["public_key"]):
-        return "public_key must be base64 encoded and PEM encoded"
-    return None
+    if not error:
+        current_app.logger.info("Checking email & username")
+        error = check_email_and_username(data["email"], data["username"])
+    if not error:
+        current_app.logger.info("Validating KEK")
+        try:
+            if not base64.b64decode(data["encrypted_KEK"]):
+                error = "Invalid encrypted_KEK format"
+        except (binascii.Error, ValueError):
+            error = "Invalid encrypted_KEK format"
+    if not error and not is_base64_and_pem_encoded_public_key(data["public_key"]):
+        error = "public_key must be base64 encoded and PEM encoded"
+    if not error:
+        try:
+            base64.b64decode(data["public_key"]).decode("utf-8")
+        except (binascii.Error, ValueError, UnicodeDecodeError):
+            error = "Invalid public key encoding"
+    return error
 
 
 @auth_ns.route("/register")
@@ -184,7 +187,9 @@ class Register(Resource):
             )
             hashed_password = ph.hash(data["auth_password"])
 
-            new_user = UserLogin(user_id, data["username"], hashed_password, data["email"], data["public_key"])
+            decoded_public_key = base64.b64decode(data["public_key"]).decode("utf-8")
+
+            new_user = UserLogin(user_id, data["username"], hashed_password, data["email"], decoded_public_key)
 
             new_kek = UserKEK(
                 key_id=str(uuid.uuid4()),
@@ -201,7 +206,7 @@ class Register(Resource):
             )
 
             try:
-                is_trusted, tofu_message, _ = verify_tofu_key(user_id, data["public_key"])
+                is_trusted, tofu_message, _ = verify_tofu_key(user_id, decoded_public_key)
                 if not is_trusted:
                     return handle_error(f"Key verification failed: {tofu_message}", 400)
 
@@ -209,7 +214,7 @@ class Register(Resource):
                 db.session.add(new_kek)
                 db.session.commit()
 
-                key_fingerprint = calculate_key_fingerprint(data["public_key"])
+                key_fingerprint = calculate_key_fingerprint(decoded_public_key)
                 current_app.logger.info(
                     "User created successfully: %s with key fingerprint: %s",
                     user_id,
