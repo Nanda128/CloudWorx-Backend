@@ -130,7 +130,7 @@ class FileResource(Resource):
         """Download an encrypted file by name"""
         response = None
         try:
-            file = File.query.filter_by(file_name=file_name).first()
+            file = File.query.filter_by(file_name=file_name, created_by=current_user.id).first()
             if not file:
                 response = ({"message": "File not found"}, 404)
             else:

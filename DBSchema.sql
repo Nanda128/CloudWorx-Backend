@@ -29,7 +29,7 @@ CREATE TABLE
 CREATE TABLE
     IF NOT EXISTS files (
         file_id CHAR(36) NOT NULL PRIMARY KEY,
-        file_name VARCHAR(255) NOT NULL UNIQUE,
+        file_name VARCHAR(255) NOT NULL,
         iv_file TEXT NOT NULL,
         encrypted_file LONGBLOB NOT NULL,
         assoc_data_file TEXT NOT NULL,
