@@ -67,7 +67,7 @@ class FilesList(Resource):
     @files_ns.doc(security="apikey")
     @files_ns.expect(models["file_upload_model"])
     @files_ns.marshal_with(models["upload_response_model"])
-    @files_ns.response(201, "File uploaded successfully")
+    @files_ns.response(201, "File uploaded successfully", models["upload_response_model"])
     @files_ns.response(400, "Validation error")
     @token_required
     def post(self, current_user: UserLogin) -> tuple:
