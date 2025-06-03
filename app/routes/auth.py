@@ -299,7 +299,7 @@ class Login(Resource):
             return {"message": "JWT secret key is not set in environment variables!"}, 500
 
         token = jwt.encode(
-            {"user_id": user.id, "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)},
+            {"user_id": user.id, "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3)},
             jwt_secret,
         )
 
