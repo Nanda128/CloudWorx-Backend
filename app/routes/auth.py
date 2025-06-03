@@ -464,7 +464,7 @@ class DeleteUser(Resource):
 
 @auth_ns.route("/users")
 class GetAllUsers(Resource):
-    @auth_ns.response(200, "All users retrieved successfully", ["get_all_users_response_model"])
+    @auth_ns.response(200, "All users retrieved successfully", models["get_all_users_response_model"])
     @auth_ns.response(500, "Server error")
     def get(self) -> object:
         """Get all usernames and emails"""
