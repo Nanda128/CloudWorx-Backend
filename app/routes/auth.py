@@ -154,10 +154,14 @@ class Register(Resource):
 
             user_id = str(uuid.uuid4())
 
+            argon2_p = int(current_app.config.get("ARGON2_PARALLELISM", 1))
+            argon2_m = int(current_app.config.get("ARGON2_MEMORY_COST", 12288))
+            argon2_t = int(current_app.config.get("ARGON2_TIME_COST", 3))
+
             ph = PasswordHasher(
-                time_cost=data.get("t", 3),
-                memory_cost=data.get("m", 12288),
-                parallelism=data.get("p", 1),
+                time_cost=argon2_t,
+                memory_cost=argon2_m,
+                parallelism=argon2_p,
                 hash_len=32,
                 salt_len=16,
                 type=Argon2Type.ID,
