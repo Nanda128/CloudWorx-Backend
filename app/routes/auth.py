@@ -500,21 +500,6 @@ class DeleteUser(Resource):
 
         kek = UserKEK.query.filter_by(user_id=user_id).first()
 
-        files = File.query.filter_by(created_by=user_id).all()
-        files_info = []
-        for file in files:
-            file_info = {
-                "file_id": file.file_id,
-                "file_name": file.file_name,
-                "file_type": None,
-                "file_size": None,
-            }
-            if file.file_name and "." in file.file_name:
-                file_info["file_type"] = file.file_name.rsplit(".", 1)[-1].lower()
-            if file.encrypted_file is not None:
-                file_info["file_size"] = len(file.encrypted_file)
-            files_info.append(file_info)
-
         user_info = {
             "user_id": user.id,
             "username": user.username,
@@ -522,7 +507,6 @@ class DeleteUser(Resource):
             "public_key": user.public_key,
             "created_at": user.created_at.isoformat() if user.created_at else None,
             "modified_at": user.modified_at.isoformat() if user.modified_at else None,
-            "files": files_info,
         }
 
         if kek:

@@ -82,7 +82,7 @@ class FilesList(Resource):
                 iv_dek,
                 encrypted_dek,
                 error_response,
-            ) = _validate_upload_request(request)
+            ) = validate_upload_request(request)
             if error_response:
                 return error_response
             file_id = str(uuid.uuid4())
@@ -228,7 +228,7 @@ class FileIdResolver(Resource):
         return {"file_id": file.file_id}, 200
 
 
-def _validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any]:
+def validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any]:
     """Validate the upload request and extract file and DEK information from headers"""
     file = None
     error_response = None

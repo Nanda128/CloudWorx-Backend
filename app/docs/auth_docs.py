@@ -81,10 +81,6 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                     required=True,
                     description="Authentication password (must be plaintext)",
                 ),
-                "file_info": fields.List(
-                    fields.Nested(user_file_info_model),
-                    description="List of all information about a file",
-                ),
             },
         ),
         "change_auth_password_model": auth_ns.model(
@@ -184,7 +180,6 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 "m": fields.Integer(description="Argon2id parameter m", required=False),
                 "t": fields.Integer(description="Argon2id parameter t", required=False),
                 "kek_created_at": fields.String(description="ISO8601 KEK creation timestamp", required=False),
-                "files": fields.List(fields.Nested(user_file_info_model), description="List of user files"),
             },
         ),
     }
