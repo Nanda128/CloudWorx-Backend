@@ -117,7 +117,7 @@ def validate_register_data(data: dict) -> str | None:
     error = check_fields(
         data,
         required=["username", "auth_password", "email", "iv_KEK", "encrypted_KEK", "public_key", "p", "salt", "m", "t"],
-        base64_fields=["iv_KEK", "encrypted_KEK"],
+        base64_fields=["iv_KEK", "encrypted_KEK", "public_key"],
         iv_fields=["iv_KEK"],
     )
     if error:
@@ -168,7 +168,8 @@ class Register(Resource):
             )
             hashed_password = ph.hash(data["auth_password"])
 
-            pem_public_key = b"-----BEGIN PUBLIC KEY-----\n" + base64.encodebytes(data["public_key"]).replace(
+            public_key_bytes = base64.b64decode(data["public_key"])
+            pem_public_key = b"-----BEGIN PUBLIC KEY-----\n" + base64.encodebytes(public_key_bytes).replace(
                 b"\n",
                 b"",
             ).replace(b"\r", b"").replace(b" ", b"").replace(b"\t", b"").replace(b"\x0b", b"").replace(b"\x0c", b"")
