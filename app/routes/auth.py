@@ -18,7 +18,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
 from app.docs.auth_docs import register_auth_models
-from app.models.file import File, FileDEK
 from app.models.user import UserKEK, UserLogin
 from app.utils.tofu import calculate_key_fingerprint, verify_tofu_key
 from app.utils.token import token_required
@@ -206,13 +205,16 @@ class Register(Resource):
             )
 
             try:
-                is_trusted, tofu_message, _ = verify_tofu_key(user_id, decoded_public_key)
-                if not is_trusted:
-                    return handle_error(f"Key verification failed: {tofu_message}", 400)
-
                 db.session.add(new_user)
                 db.session.add(new_kek)
                 db.session.commit()
+
+                is_trusted, tofu_message, _ = verify_tofu_key(user_id, decoded_public_key)
+                if not is_trusted:
+                    db.session.delete(new_kek)
+                    db.session.delete(new_user)
+                    db.session.commit()
+                    return handle_error(f"Key verification failed: {tofu_message}", 400)
 
                 key_fingerprint = calculate_key_fingerprint(decoded_public_key)
                 current_app.logger.info(
@@ -271,52 +273,6 @@ def verify_password_and_kek(password_derived_key: str, kek_data: UserKEK) -> str
     except InvalidTag:
         return "Invalid password!"
     return None
-
-
-def decrypt_user_files(user: UserLogin, kek_data: UserKEK, password_derived_key: str) -> list[dict]:
-    """Decrypt all files for a user using their password-derived-key and KEK"""
-    password_key = base64.b64decode(password_derived_key)
-    encrypted_kek = base64.b64decode(kek_data.encrypted_kek)
-    iv_kek = base64.b64decode(kek_data.iv_kek)
-    kek = AESGCM(password_key).decrypt(iv_kek, encrypted_kek, None)
-
-    files = File.query.filter_by(created_by=user.id).all()
-    file_ids = [f.file_id for f in files]
-    if not file_ids:
-        return []
-
-    deks = FileDEK.query.filter(
-        db.or_(*[FileDEK.file_id == file_id for file_id in file_ids]),
-    ).all()
-    dek_map = {dek.file_id: dek for dek in deks}
-
-    decrypted_files = []
-    for file in files:
-        dek = dek_map.get(file.file_id)
-        if not dek:
-            continue
-
-        encrypted_dek = base64.b64decode(dek.encrypted_dek)
-        iv_dek = base64.b64decode(dek.iv_dek)
-        dek = AESGCM(kek).decrypt(iv_dek, encrypted_dek, None)
-
-        iv_file = base64.b64decode(file.iv_file)
-        try:
-            decrypted_content = AESGCM(dek).decrypt(iv_file, file.encrypted_file, None)
-        except InvalidTag:
-            decrypted_content = None
-
-        decrypted_files.append(
-            {
-                "file_id": file.file_id,
-                "file_name": file.file_name,
-                "decrypted_content": base64.b64encode(decrypted_content).decode("utf-8") if decrypted_content else None,
-                "created_at": (
-                    file.created_at.isoformat() if hasattr(file, "created_at") and file.created_at is not None else None
-                ),
-            },
-        )
-    return decrypted_files
 
 
 @auth_ns.route("/login")
