@@ -28,6 +28,7 @@ auth_ns = Namespace("auth", description="Authentication and user management")
 
 MIN_PASSWORD_LENGTH = 12
 IV_BYTE_LENGTH = 12
+ARGON2_HASH_PARTS_MIN_LENGTH = 5
 
 models = register_auth_models(auth_ns)
 
@@ -113,6 +114,18 @@ def check_email_and_username(email: str, username: str) -> str | None:
     return None
 
 
+def is_base64_and_pem_encoded_public_key(public_key: str) -> bool:
+    """Check if the public_key is base64 encoded and then PEM encoded.
+
+    Decodes base64, then checks for PEM header/footer.
+    """
+    try:
+        decoded = base64.b64decode(public_key)
+        pem_str = decoded.decode("utf-8")
+        return pem_str.startswith("-----BEGIN PUBLIC KEY-----") and pem_str.strip().endswith("-----END PUBLIC KEY-----")
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        return False
+
 def validate_register_data(data: dict) -> str | None:
     error = check_fields(
         data,
@@ -132,6 +145,8 @@ def validate_register_data(data: dict) -> str | None:
             return "Invalid encrypted_KEK format"
     except (binascii.Error, ValueError):
         return "Invalid encrypted_KEK format"
+    if not is_base64_and_pem_encoded_public_key(data["public_key"]):
+        return "public_key must be base64 encoded and PEM encoded"
     return None
 
 
@@ -168,15 +183,6 @@ class Register(Resource):
             )
             hashed_password = ph.hash(data["auth_password"])
 
-            public_key_bytes = base64.b64decode(data["public_key"])
-            pem_public_key = b"-----BEGIN PUBLIC KEY-----\n" + base64.encodebytes(public_key_bytes).replace(
-                b"\n",
-                b"",
-            ).replace(b"\r", b"").replace(b" ", b"").replace(b"\t", b"").replace(b"\x0b", b"").replace(b"\x0c", b"")
-            pem_lines = [pem_public_key[i : i + 64] for i in range(0, len(pem_public_key), 64)]
-            pem_public_key = b"\n".join(pem_lines) + b"\n-----END PUBLIC KEY-----\n"
-            data["public_key"] = pem_public_key.decode("utf-8")
-
             new_user = UserLogin(user_id, data["username"], hashed_password, data["email"], data["public_key"])
 
             new_kek = UserKEK(
@@ -187,9 +193,9 @@ class Register(Resource):
                     encrypted_kek=data["encrypted_KEK"],
                     assoc_data_kek=f"User Key Encryption Key for {user_id}",
                     salt=data.get("salt", ""),
-                    p=int(data.get("p", 0)),
-                    m=int(data.get("m", 0)),
-                    t=int(data.get("t", 0)),
+                    p=int(data.get("p", argon2_p)),
+                    m=int(data.get("m", argon2_m)),
+                    t=int(data.get("t", argon2_t)),
                 ),
             )
 
@@ -309,7 +315,6 @@ def decrypt_user_files(user: UserLogin, kek_data: UserKEK, password_derived_key:
         )
     return decrypted_files
 
-
 @auth_ns.route("/login")
 class Login(Resource):
     @auth_ns.expect(models["login_model"])
@@ -408,7 +413,7 @@ class ChangeEncryptionPassword(Resource):
                 "new_iv_KEK",
                 "new_encrypted_KEK",
             ],
-            base64_fields=["old_password_derived_key", "new_iv_KEK", "new_encrypted_KEK"],
+            base64_fields=["new_iv_KEK", "new_encrypted_KEK"],
             iv_fields=["new_iv_KEK"],
         )
         if error:

@@ -53,7 +53,7 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 ),
                 "salt": fields.String(
                     required=True,
-                    description="Base64-encoded salt for password hashing",
+                    description="Salt for password hashing",
                 ),
                 "p": fields.Integer(
                     required=True,
@@ -89,7 +89,7 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 "username": fields.String(required=True),
                 "old_auth_password": fields.String(
                     required=True,
-                    description="Old authentication password (must be hashed with Argon2id before sending)",
+                    description="Old authentication password (must not be hashed)",
                 ),
                 "new_auth_password": fields.String(
                     required=True,
@@ -103,11 +103,11 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 "username": fields.String(required=True),
                 "old_password_derived_key": fields.String(
                     required=True,
-                    description="Base64-encoded old password-derived key",
+                    description="Argon2ID hash of the old password",
                 ),
                 "new_password_derived_key": fields.String(
                     required=True,
-                    description="Base64-encoded new password-derived key",
+                    description="Argon2ID hash of the new password",
                 ),
                 "new_iv_KEK": fields.String(
                     required=True,
@@ -115,7 +115,7 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 ),
                 "new_encrypted_KEK": fields.String(
                     required=True,
-                    description="Base64-encoded new KEK",
+                    description="Base64-encoded encrypted KEK with new password",
                 ),
             },
         ),

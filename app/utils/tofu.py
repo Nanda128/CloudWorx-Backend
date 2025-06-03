@@ -26,13 +26,11 @@ def calculate_key_fingerprint(public_key_pem: str) -> str:
         raise
 
 
-
 def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, TrustedKey | None]:
     """Verify a public key using TOFU principles"""
     try:
         fingerprint = calculate_key_fingerprint(public_key_pem)
 
-        # Check if we've seen this key before
         trusted_key = TrustedKey.query.filter_by(
             user_id=user_id,
             key_fingerprint=fingerprint,
@@ -51,20 +49,24 @@ def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, Trust
             db.session.commit()
             current_app.logger.warning(
                 "Key content mismatch for user %s, fingerprint %s",
-                user_id, fingerprint,
+                user_id,
+                fingerprint,
             )
             return False, "Key content has changed - possible security breach", trusted_key
+
+        new_trusted_key = TrustedKey(user_id, fingerprint, public_key_pem)
+        db.session.add(new_trusted_key)
+        db.session.commit()
+        current_app.logger.info(
+            "New key trusted for user %s, fingerprint %s",
+            user_id,
+            fingerprint,
+        )
 
     except (ValueError, TypeError, binascii.Error) as e:
         current_app.logger.exception("TOFU verification failed")
         return False, f"TOFU verification error: {e!s}", None
     else:
-        new_trusted_key = TrustedKey(user_id, fingerprint, public_key_pem)
-        db.session.add(new_trusted_key)
-        db.session.commit()
-        current_app.logger.info(
-            "New key trusted for user %s, fingerprint %s", user_id, fingerprint,
-        )
         return True, "Key trusted on first use", new_trusted_key
 
 
