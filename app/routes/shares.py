@@ -161,7 +161,7 @@ class FileShareResource(Resource):
         encrypted_dek = aesgcm.encrypt(iv, dek, None)
 
         share = FileShare(
-            share_id=str(uuid.uuid4()),
+            id=str(uuid.uuid4()),
             file_id=file_id,
             shared_with=recipient.id,
             encrypted_dek=base64.b64encode(encrypted_dek),
@@ -177,7 +177,7 @@ class FileShareResource(Resource):
         db.session.commit()
         return {
             "message": "File shared successfully",
-            "share_id": share.share_id,
+            "share_id": share.id,
             "shared_with": recipient.id,
         }, 201
 

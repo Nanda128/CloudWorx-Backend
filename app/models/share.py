@@ -6,7 +6,7 @@ from app import db
 class FileShare(db.Model):
     __tablename__ = "file_share"
 
-    share_id = db.Column(db.String(36), primary_key=True, nullable=False)
+    id = db.Column(db.String(36), primary_key=True, nullable=False)
     file_id = db.Column(
         db.String(36),
         db.ForeignKey("files.file_id", ondelete="CASCADE"),
@@ -23,14 +23,14 @@ class FileShare(db.Model):
 
     def __init__(  # noqa: PLR0913
         self,
-        share_id: str,
+        id: str,  # noqa: A002
         file_id: str,
         shared_with: str,
         encrypted_dek: bytes,
         iv_dek: str,
         assoc_data_dek: str = "File of file ID {file_id} shared with {shared_with}",
     ) -> None:
-        self.share_id = share_id
+        self.id = id
         self.file_id = file_id
         self.shared_with = shared_with
         self.encrypted_dek = encrypted_dek
