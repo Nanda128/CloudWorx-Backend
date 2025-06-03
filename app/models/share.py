@@ -6,7 +6,7 @@ from app import db
 class FileShare(db.Model):
     __tablename__ = "file_share"
 
-    id = db.Column(db.String(36), primary_key=True, nullable=False)
+    share_id = db.Column(db.String(36), primary_key=True, nullable=False)
     file_id = db.Column(
         db.String(36),
         db.ForeignKey("files.file_id", ondelete="CASCADE"),
