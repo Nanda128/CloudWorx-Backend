@@ -109,14 +109,24 @@ def check_email_and_username(email: str, username: str) -> str | None:
 
 
 def is_base64_and_pem_encoded_public_key(public_key: str) -> bool:
-    """Check if the public_key is base64 encoded and then PEM encoded.
+    """Check if the public_key is base64 encoded and then PEM encoded X25519 key.
 
-    Decodes base64, then checks for PEM header/footer.
+    Decodes base64, then checks for PEM header/footer and validates X25519 format.
     """
     try:
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import x25519
+
         decoded = base64.b64decode(public_key)
         pem_str = decoded.decode("utf-8")
-        return pem_str.startswith("-----BEGIN PUBLIC KEY-----") and pem_str.strip().endswith("-----END PUBLIC KEY-----")
+
+        if not (
+            pem_str.startswith("-----BEGIN PUBLIC KEY-----") and pem_str.strip().endswith("-----END PUBLIC KEY-----")
+        ):
+            return False
+
+        key = serialization.load_pem_public_key(pem_str.encode("utf-8"))
+        return isinstance(key, x25519.X25519PublicKey)
     except (binascii.Error, ValueError, UnicodeDecodeError):
         return False
 
@@ -138,8 +148,8 @@ def validate_register_data(data: dict) -> str | None:
                 error = "Invalid encrypted_KEK format"
         except (binascii.Error, ValueError):
             error = "Invalid encrypted_KEK format"
-    if not error and not is_base64_and_pem_encoded_public_key(data["public_key"]):
-        error = "public_key must be base64 encoded and PEM encoded"
+    if not is_base64_and_pem_encoded_public_key(data["public_key"]):
+        error = "public_key must be base64 encoded X25519 PEM key"
     if not error:
         try:
             base64.b64decode(data["public_key"]).decode("utf-8")

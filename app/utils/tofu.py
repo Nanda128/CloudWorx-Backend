@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import x25519
 from flask import current_app
 
 from app import db
@@ -10,9 +11,12 @@ from app.models.tofu import TrustedKey, TrustStatus
 
 
 def calculate_key_fingerprint(public_key_pem: str) -> str:
-    """Calculate SHA256 fingerprint of a public key"""
+    """Calculate SHA256 fingerprint of a X25519 public key"""
     try:
         key = serialization.load_pem_public_key(public_key_pem.encode("utf-8"))
+        if not isinstance(key, x25519.X25519PublicKey):
+            msg = "Key is not an X25519 public key"
+            current_app.logger.error(msg)
         key_der = key.public_bytes(
             encoding=serialization.Encoding.DER,
             format=serialization.PublicFormat.SubjectPublicKeyInfo,
@@ -20,7 +24,7 @@ def calculate_key_fingerprint(public_key_pem: str) -> str:
         return hashlib.sha256(key_der).hexdigest()
     except Exception as e:
         current_app.logger.exception("Failed to calculate key fingerprint")
-        msg = "Invalid public key format"
+        msg = "Invalid X25519 public key format"
         raise ValueError(msg) from e
 
 

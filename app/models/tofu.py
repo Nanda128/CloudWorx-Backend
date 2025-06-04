@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -9,7 +10,6 @@ class TrustStatus(Enum):
     REVOKED = "revoked"
     SUSPICIOUS = "suspicious"
 
-
 class TrustedKey(db.Model):
     __tablename__ = "trusted_keys"
 
@@ -20,7 +20,7 @@ class TrustedKey(db.Model):
         nullable=False,
     )
     key_fingerprint = db.Column(db.String(64), nullable=False, index=True)
-    public_key = db.Column(db.Text, nullable=False)
+    public_key = db.Column(db.Text, nullable=False)  # X25519 PEM format
     first_seen = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     last_verified = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     trust_status = db.Column(db.Enum(TrustStatus), default=TrustStatus.TRUSTED)
@@ -29,8 +29,6 @@ class TrustedKey(db.Model):
     __table_args__ = (db.UniqueConstraint("user_id", "key_fingerprint", name="unique_user_key"),)
 
     def __init__(self, user_id: str, key_fingerprint: str, public_key: str) -> None:
-        import uuid
-
         self.id = str(uuid.uuid4())
         self.user_id = user_id
         self.key_fingerprint = key_fingerprint

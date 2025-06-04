@@ -5,7 +5,7 @@ import uuid
 
 from argon2.low_level import Type, hash_secret_raw
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
+from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from flask import current_app, request
@@ -130,30 +130,24 @@ class FileShareResource(Resource):
             recipient_public_key = serialization.load_pem_public_key(
                 recipient.public_key.encode("utf-8"),
             )
-            if not isinstance(recipient_public_key, ed25519.Ed25519PublicKey):
+            if not isinstance(recipient_public_key, x25519.X25519PublicKey):
                 return {
-                    "message": ("Recipient's public key is not an Ed25519 key and cannot be used for encryption"),
+                    "message": "Recipient's public key is not an X25519 key",
                 }, 400
 
-            recipient_x25519_pub = x25519.X25519PublicKey.from_public_bytes(
-                recipient_public_key.public_bytes(
-                    encoding=serialization.Encoding.Raw,
-                    format=serialization.PublicFormat.Raw,
-                ),
-            )
         except (ValueError, TypeError):
             return {
-                "message": "Failed to convert Ed25519 public key to X25519 for encryption",
+                "message": "Failed to load X25519 public key",
             }, 400
 
         ephemeral_private = x25519.X25519PrivateKey.generate()
         ephemeral_public = ephemeral_private.public_key()
-        shared_secret = ephemeral_private.exchange(recipient_x25519_pub)
+        shared_secret = ephemeral_private.exchange(recipient_public_key)
         hkdf = HKDF(
             algorithm=hashes.SHA256(),
             length=32,
             salt=None,
-            info=b"file-share-ed25519",
+            info=b"file-share-x25519",
         )
         symmetric_key = hkdf.derive(shared_secret)
         aesgcm = AESGCM(symmetric_key)
