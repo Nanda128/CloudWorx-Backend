@@ -4,7 +4,7 @@ import io
 import uuid
 from typing import Any
 
-from flask import Request, current_app, request, send_file
+from flask import Request, Response, current_app, request, send_file
 from flask_restx import Namespace, Resource
 from markupsafe import escape
 from werkzeug.utils import secure_filename
@@ -128,7 +128,7 @@ class FileResource(Resource):
     @files_ns.response(403, "Access denied")
     @files_ns.response(404, "File not found")
     @token_required
-    def get(self, current_user: UserLogin, file_name: str) -> tuple:
+    def get(self, current_user: UserLogin, file_name: str) -> Response | tuple[dict, int]:
         """Download an encrypted file by name"""
         response = None
         try:
@@ -155,11 +155,9 @@ class FileResource(Resource):
                             response = self.send_owner_file(file, dek, user_kek)
         except (db.exc.SQLAlchemyError, OSError) as e:
             response = ({"message": f"Error downloading file: {str(e)!s}"}, 500)
-        if isinstance(response, tuple):
-            return response
-        return response, 200
+        return response
 
-    def send_owner_file(self, file: File, dek: FileDEK, user_kek: UserKEK) -> tuple | object:
+    def send_owner_file(self, file: File, dek: FileDEK, user_kek: UserKEK) -> Response:
         resp = send_file(
             io.BytesIO(file.encrypted_file),
             mimetype="application/octet-stream",
@@ -175,9 +173,9 @@ class FileResource(Resource):
         resp.headers["X-File-DEK-IV"] = dek.iv_dek if dek else ""
         resp.headers["X-User-Encrypted-KEK"] = user_kek.encrypted_kek if user_kek else ""
         resp.headers["X-User-KEK-IV"] = user_kek.iv_kek if user_kek else ""
-        return resp, 200
+        return resp
 
-    def send_shared_file(self, file: File, dek: FileDEK, share: FileShare) -> tuple:
+    def send_shared_file(self, file: File, dek: FileDEK, share: FileShare) -> Response:
         resp = send_file(
             io.BytesIO(file.encrypted_file),
             mimetype="application/octet-stream",
@@ -190,7 +188,7 @@ class FileResource(Resource):
         resp.headers["X-File-IV"] = file.iv_file
         resp.headers["X-File-Assoc-Data"] = file.assoc_data_file
         resp.headers["X-File-DEK"] = share.encrypted_dek if share and dek else ""
-        return resp, 200
+        return resp
 
     @files_ns.doc(security="apikey")
     @files_ns.response(200, "File deleted successfully")
