@@ -53,6 +53,8 @@ class FilesList(Resource):
                     {
                         "file_id": file.file_id,
                         "file_name": file.file_name,
+                        "file_type": file.file_type,
+                        "file_size": file.file_size,
                         "iv_file": file.iv_file,
                         "assoc_data_file": file.assoc_data_file,
                         "created_at": file.created_at.isoformat(),
