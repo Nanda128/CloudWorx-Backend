@@ -268,6 +268,10 @@ def validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, 
     elif not all([iv_dek, encrypted_dek]):
         error_response = ({"message": "Missing DEK encryption data"}, 400)
     elif not file or not allowed_file(file.filename or "") or not file_name or not iv_file:
+        current_app.logger.warning("%s", not file)
+        current_app.logger.warning("%s", not allowed_file(file.filename or ""))
+        current_app.logger.warning("%s", not file_name)
+        current_app.logger.warning("%s", not iv_file)
         error_response = ({"message": "Missing required fields for file information"}, 400)
     elif not iv_dek or not encrypted_dek:
         error_response = ({"message": "Missing required fields for file DEK information"}, 400)

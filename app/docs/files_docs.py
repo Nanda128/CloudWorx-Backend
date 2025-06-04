@@ -83,7 +83,7 @@ def register_files_models(files_ns: Namespace) -> dict:
 
     file_download_headers = {
         "X-File-ID": "Unique identifier for the file",
-        "X-File-Name": "Name of the file",
+        "X-File-Name": "Name of the file, cannot be larger than 255 characters",
         "X-File-Type": "MIME type of the file",
         "X-File-IV": "Initialization vector used for file encryption",
         "X-File-Assoc-Data": "Associated data for file encryption",
