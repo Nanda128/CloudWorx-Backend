@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import NamedTuple
 
@@ -12,6 +13,7 @@ class UserLogin(db.Model):
     auth_password = db.Column(db.Text, nullable=False)
     email = db.Column(db.Text, unique=True, nullable=False)
     public_key = db.Column(db.Text, nullable=False)
+    signing_public_key = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     modified_at = db.Column(
         db.DateTime,
@@ -38,19 +40,25 @@ class UserLogin(db.Model):
         foreign_keys="FileShare.shared_with",
     )
 
+    @dataclass
+    class Keys:
+        public_key: str
+        signing_public_key: str
+
     def __init__(
         self,
         user_id: str,
         username: str,
         password: str,
         email: str,
-        public_key: str,
+        keys: "UserLogin.Keys",
     ) -> None:
         self.id = user_id
         self.username = username
         self.auth_password = password
         self.email = email
-        self.public_key = public_key
+        self.public_key = keys.public_key
+        self.signing_public_key = keys.signing_public_key
 
     def __repr__(self) -> str:
         return f"<User {self.username}>"

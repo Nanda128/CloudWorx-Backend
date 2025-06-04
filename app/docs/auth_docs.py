@@ -34,8 +34,12 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 ),
                 "email": fields.String(required=True),
                 "public_key": fields.String(
-                    required=False,
-                    description="Base64-encoded X25519 public key for user for sharing",
+                    required=True,
+                    description="Base64-encoded X25519 public key for encryption",
+                ),
+                "signing_public_key": fields.String(
+                    required=True,
+                    description="Base64-encoded Ed25519 public key for signing",
                 ),
                 "iv_KEK": fields.String(
                     required=True,
@@ -92,10 +96,6 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 "old_password_derived_key": fields.String(
                     required=True,
                     description="Argon2ID hash of the old password",
-                ),
-                "new_password_derived_key": fields.String(
-                    required=True,
-                    description="Argon2ID hash of the new password",
                 ),
                 "new_iv_KEK": fields.String(
                     required=True,

@@ -26,6 +26,9 @@ class FileShare(db.Model):
     file_type = db.Column(db.String(32), nullable=True)
     file_size = db.Column(db.Integer, nullable=True)
     encrypted_file = db.Column(db.LargeBinary(length=(2**32) - 1), nullable=False)
+    nonce = db.Column(db.LargeBinary(length=32), nullable=False)
+    ephemeral_public_key = db.Column(db.LargeBinary(length=32), nullable=False)
+    sender_signature = db.Column(db.LargeBinary(length=64), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
     def __init__(  # noqa: PLR0913
@@ -38,6 +41,9 @@ class FileShare(db.Model):
         file_type: str,
         file_size: int,
         encrypted_file: bytes,
+        nonce: bytes,
+        ephemeral_public_key: bytes,
+        sender_signature: bytes,
     ) -> None:
         self.id = id
         self.file_id = file_id
@@ -47,6 +53,9 @@ class FileShare(db.Model):
         self.file_type = file_type
         self.file_size = file_size
         self.encrypted_file = encrypted_file
+        self.nonce = nonce
+        self.ephemeral_public_key = ephemeral_public_key
+        self.sender_signature = sender_signature
         self.created_at = datetime.now(timezone.utc)
 
     def __repr__(self) -> str:

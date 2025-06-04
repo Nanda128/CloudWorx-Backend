@@ -46,7 +46,8 @@ def register_shares_models(shares_ns: Namespace) -> dict:
         {
             "username": fields.String(description="Username"),
             "user_id": fields.String(description="User ID"),
-            "public_key": fields.String(description="X25519 public key in PEM format"),
+            "x25519_public_key": fields.String(description="X25519 public key in PEM format"),
+            "ed25519_public_key": fields.String(description="Ed25519 public key in PEM format"),
             "tofu_message": fields.String(description="TOFU verification message"),
         },
     )
@@ -56,6 +57,30 @@ def register_shares_models(shares_ns: Namespace) -> dict:
             "ShareRequest",
             {
                 "shared_with_username": fields.String(required=True, description="Username to share with"),
+                "encrypted_file": fields.String(required=True, description="Base64-encoded encrypted file data"),
+                "nonce": fields.String(required=True, description="Base64-encoded AES-GCM nonce"),
+                "ephemeral_public_key": fields.String(
+                    required=True, description="Base64-encoded ephemeral X25519 public key",
+                ),
+                "signature": fields.String(required=True, description="Base64-encoded Ed25519 signature"),
+            },
+        ),
+        "download_response_model": shares_ns.model(
+            "DownloadResponse",
+            {
+                "file_id": fields.String(description="File ID"),
+                "file_name": fields.String(description="File name"),
+                "file_type": fields.String(description="File type"),
+                "file_size": fields.Integer(description="File size in bytes"),
+                "shared_by": fields.String(description="Sender user ID"),
+                "shared_by_username": fields.String(description="Sender username"),
+                "encrypted_file": fields.String(description="Base64-encoded encrypted file data"),
+                "nonce": fields.String(description="Base64-encoded AES-GCM nonce"),
+                "ephemeral_public_key": fields.String(description="Base64-encoded ephemeral X25519 public key"),
+                "sender_signature": fields.String(description="Base64-encoded Ed25519 signature"),
+                "sender_x25519_public_key": fields.String(description="Sender's X25519 public key in PEM format"),
+                "sender_ed25519_public_key": fields.String(description="Sender's Ed25519 public key in PEM format"),
+                "created_at": fields.String(description="Share creation timestamp"),
             },
         ),
         "share_response_model": shares_ns.model(

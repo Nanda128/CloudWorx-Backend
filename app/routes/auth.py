@@ -11,6 +11,8 @@ from argon2 import PasswordHasher
 from argon2 import Type as Argon2Type
 from argon2.exceptions import VerifyMismatchError
 from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from flask import Blueprint, current_app, request
 from flask_restx import Namespace, Resource
@@ -18,6 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
 from app.docs.auth_docs import register_auth_models
+from app.models.file import File
 from app.models.user import UserKEK, UserLogin
 from app.utils.tofu import calculate_key_fingerprint, verify_tofu_key
 from app.utils.token import token_required
@@ -34,6 +37,7 @@ models = register_auth_models(auth_ns)
 
 def validate_password_strength(password: str) -> tuple[bool, str]:
     """Validate that password meets complexity requirements"""
+    current_app.logger.info("Validating password strength")
     if len(password) < MIN_PASSWORD_LENGTH:
         return False, f"Password must be at least {MIN_PASSWORD_LENGTH} characters long"
 
@@ -54,6 +58,7 @@ def validate_password_strength(password: str) -> tuple[bool, str]:
 
 def validate_base64(value: str, name: str) -> tuple[bool, str]:
     """Validate that a value is a valid base64 string"""
+    current_app.logger.info("Validating base64 encoding for %s", name)
     try:
         base64.b64decode(value)
     except (binascii.Error, ValueError):
@@ -64,6 +69,7 @@ def validate_base64(value: str, name: str) -> tuple[bool, str]:
 
 def validate_iv(iv: str) -> tuple[bool, str]:
     """Validate that IV is correct size (96 bits / 12 bytes)"""
+    current_app.logger.info("Validating IV length")
     try:
         decoded = base64.b64decode(iv)
         if len(decoded) != IV_BYTE_LENGTH:
@@ -80,19 +86,23 @@ def check_fields(
     base64_fields: list[str] | None = None,
     iv_fields: list[str] | None = None,
 ) -> str | None:
+    current_app.logger.info("Checking required fields and formats")
     required = required or []
     base64_fields = base64_fields or []
     iv_fields = iv_fields or []
     for field in required:
         if not data.get(field):
+            current_app.logger.warning("Missing required field: %s", field)
             return f"Missing required field: {field}"
     for field in base64_fields:
         is_valid, error = validate_base64(data[field], field)
         if not is_valid:
+            current_app.logger.warning("Invalid base64 for field %s: %s", field, error)
             return error
     for field in iv_fields:
         is_valid, error = validate_iv(data[field])
         if not is_valid:
+            current_app.logger.warning("Invalid IV for field %s: %s", field, error)
             return error
     return None
 
@@ -100,10 +110,13 @@ def check_fields(
 def check_email_and_username(email: str, username: str) -> str | None:
     email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})*$"
     if not re.match(email_pattern, email):
+        current_app.logger.warning("Invalid email format: %s", email)
         return "Invalid email format"
     if not re.match(r"^[A-Za-z0-9_-]+$", username):
+        current_app.logger.warning("Invalid username format: %s", username)
         return "Username can only contain letters, numbers, hyphens, and underscores"
     if UserLogin.query.filter_by(username=username).first():
+        current_app.logger.warning("Username already exists: %s", username)
         return "Username already exists!"
     return None
 
@@ -114,9 +127,7 @@ def is_base64_and_pem_encoded_public_key(public_key: str) -> bool:
     Decodes base64, then checks for PEM header/footer and validates X25519 format.
     """
     try:
-        from cryptography.hazmat.primitives import serialization
-        from cryptography.hazmat.primitives.asymmetric import x25519
-
+        current_app.logger.info("Validating public key format")
         decoded = base64.b64decode(public_key)
         pem_str = decoded.decode("utf-8")
 
@@ -128,14 +139,46 @@ def is_base64_and_pem_encoded_public_key(public_key: str) -> bool:
         key = serialization.load_pem_public_key(pem_str.encode("utf-8"))
         return isinstance(key, x25519.X25519PublicKey)
     except (binascii.Error, ValueError, UnicodeDecodeError):
+        current_app.logger.warning("Invalid public key format")
+        return False
+
+
+def is_base64_and_pem_encoded_ed25519_key(public_key: str) -> bool:
+    """Check if the public_key is base64 encoded and then PEM encoded Ed25519 key."""
+    try:
+        current_app.logger.info("Validating Ed25519 public key format")
+        decoded = base64.b64decode(public_key)
+        pem_str = decoded.decode("utf-8")
+
+        if not (
+            pem_str.startswith("-----BEGIN PUBLIC KEY-----") and pem_str.strip().endswith("-----END PUBLIC KEY-----")
+        ):
+            return False
+
+        key = serialization.load_pem_public_key(pem_str.encode("utf-8"))
+        return isinstance(key, ed25519.Ed25519PublicKey)
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        current_app.logger.warning("Invalid Ed25519 public key format")
         return False
 
 
 def validate_register_data(data: dict) -> str | None:
     error = check_fields(
         data,
-        required=["username", "auth_password", "email", "iv_KEK", "encrypted_KEK", "public_key", "p", "salt", "m", "t"],
-        base64_fields=["iv_KEK", "encrypted_KEK", "public_key"],
+        required=[
+            "username",
+            "auth_password",
+            "email",
+            "iv_KEK",
+            "encrypted_KEK",
+            "public_key",
+            "signing_public_key",
+            "p",
+            "salt",
+            "m",
+            "t",
+        ],
+        base64_fields=["iv_KEK", "encrypted_KEK", "public_key", "signing_public_key"],
         iv_fields=["iv_KEK"],
     )
     if not error:
@@ -145,15 +188,22 @@ def validate_register_data(data: dict) -> str | None:
         current_app.logger.info("Validating KEK")
         try:
             if not base64.b64decode(data["encrypted_KEK"]):
+                current_app.logger.warning("Invalid encrypted_KEK format")
                 error = "Invalid encrypted_KEK format"
         except (binascii.Error, ValueError):
+            current_app.logger.warning("Invalid encrypted_KEK format")
             error = "Invalid encrypted_KEK format"
     if not is_base64_and_pem_encoded_public_key(data["public_key"]):
+        current_app.logger.warning("Invalid public_key format")
         error = "public_key must be base64 encoded X25519 PEM key"
+    if not is_base64_and_pem_encoded_ed25519_key(data["signing_public_key"]):
+        current_app.logger.warning("Invalid signing_public_key format")
+        error = "signing_public_key must be base64 encoded Ed25519 PEM key"
     if not error:
         try:
             base64.b64decode(data["public_key"]).decode("utf-8")
         except (binascii.Error, ValueError, UnicodeDecodeError):
+            current_app.logger.warning("Invalid public key encoding")
             error = "Invalid public key encoding"
     return error
 
@@ -167,6 +217,7 @@ class Register(Resource):
     def post(self) -> object:
         """Register a new user with TOFU key verification"""
         try:
+            current_app.logger.info("Processing registration request")
             data = request.get_json()
             current_app.logger.info("Received registration request for username: %s", data.get("username"))
 
@@ -192,8 +243,15 @@ class Register(Resource):
             hashed_password = ph.hash(data["auth_password"])
 
             decoded_public_key = base64.b64decode(data["public_key"]).decode("utf-8")
+            decoded_signing_key = base64.b64decode(data["signing_public_key"]).decode("utf-8")
 
-            new_user = UserLogin(user_id, data["username"], hashed_password, data["email"], decoded_public_key)
+            new_user = UserLogin(
+                user_id,
+                data["username"],
+                hashed_password,
+                data["email"],
+                keys=UserLogin.Keys(public_key=decoded_public_key, signing_public_key=decoded_signing_key),
+            )
 
             new_kek = UserKEK(
                 key_id=str(uuid.uuid4()),
@@ -219,6 +277,11 @@ class Register(Resource):
                     db.session.delete(new_kek)
                     db.session.delete(new_user)
                     db.session.commit()
+                    current_app.logger.warning(
+                        "TOFU verification failed for user %s with public key %s",
+                        user_id,
+                        decoded_public_key,
+                    )
                     return {"message": tofu_message}, 400
 
                 key_fingerprint = calculate_key_fingerprint(decoded_public_key)
@@ -250,8 +313,14 @@ class Register(Resource):
 def validate_retrieve_files_data(data: dict) -> str | None:
     error = check_fields(data, required=["username", "password_derived_key"])
     if error:
+        current_app.logger.warning("Validation error: %s", error)
         return error
     if not isinstance(data["username"], str) or not isinstance(data["password_derived_key"], str):
+        current_app.logger.warning(
+            "Username and password derived key must be strings: %s, %s",
+            data.get("username"),
+            data.get("password_derived_key"),
+        )
         return "Username and password derived key must be strings"
     return None
 
@@ -259,9 +328,11 @@ def validate_retrieve_files_data(data: dict) -> str | None:
 def get_user_and_kek(username: str) -> tuple:
     user = UserLogin.query.filter_by(username=username).first()
     if not user:
+        current_app.logger.warning("User not found: %s", username)
         return None, None, "User not found!"
     kek_data = UserKEK.query.filter_by(user_id=user.id).first()
     if not kek_data:
+        current_app.logger.warning("KEK data not found for user: %s", username)
         return user, None, "User KEK not found!"
     return user, kek_data, None
 
@@ -270,14 +341,17 @@ def verify_password_and_kek(password_derived_key: str, kek_data: UserKEK) -> str
     try:
         password_key = base64.b64decode(password_derived_key)
     except (binascii.Error, ValueError) as e:
+        current_app.logger.warning("Invalid password derived key format: %s", e)
         return "Authentication failed: " + str(e)
     if not kek_data.encrypted_kek or not kek_data.iv_kek:
+        current_app.logger.warning("Missing KEK or IV for user")
         return "Missing KEK or IV for user!"
     try:
         encrypted_kek = base64.b64decode(kek_data.encrypted_kek)
         iv_kek = base64.b64decode(kek_data.iv_kek)
         AESGCM(password_key).decrypt(iv_kek, encrypted_kek, None)
     except InvalidTag:
+        current_app.logger.warning("Invalid password derived key or KEK decryption failed")
         return "Invalid password!"
     return None
 
@@ -286,6 +360,7 @@ def generate_jwt_token(user_id: str) -> str:
     """Generate a JWT token for a user"""
     jwt_secret = current_app.config.get("JWT_SECRET_KEY")
     if not jwt_secret:
+        current_app.logger.error("JWT secret key is not set in environment variables!")
         error_message = "JWT secret key is not set in environment variables!"
         raise RuntimeError(error_message)
     return jwt.encode(
@@ -310,20 +385,24 @@ class Login(Resource):
 
         for field in ["username", "entered_auth_password"]:
             if field not in data:
+                current_app.logger.warning("Missing required field: %s", field)
                 return {"message": f"Missing required field: {field}"}, 400
 
         user = UserLogin.query.filter_by(username=data["username"]).first()
         if not user:
+            current_app.logger.warning("Invalid username: %s", data["username"])
             return {"message": "Invalid username!"}, 404
 
         try:
             PasswordHasher().verify(user.auth_password, data["entered_auth_password"])
         except VerifyMismatchError:
+            current_app.logger.warning("Invalid authentication password for user: %s", data["username"])
             return {"message": "Invalid authentication password!"}, 401
 
         try:
             token = generate_jwt_token(user.id)
         except RuntimeError as e:
+            current_app.logger.exception("Error generating JWT token for user %s", user.id, exc_info=e)
             return {"message": str(e)}, 500
 
         return {
@@ -347,18 +426,26 @@ class ChangeAuthPassword(Resource):
 
         for field in ["old_auth_password", "new_auth_password"]:
             if field not in data:
+                current_app.logger.warning("Missing required field: %s", field)
                 return {"message": f"Missing required field: {field}"}, 400
 
         user = UserLogin.query.filter_by(username=current_user.id).first()
         if not user:
+            current_app.logger.warning("Invalid username or user not found: %s", current_user.id)
             return {"message": "Invalid username or user not found!"}, 404
 
         try:
             PasswordHasher().verify(user.auth_password, data["old_auth_password"])
         except VerifyMismatchError:
+            current_app.logger.warning(
+                "Invalid old authentication password for user: %s", current_user.id,
+            )
             return {"message": "Invalid old authentication password!"}, 401
 
         if data["old_auth_password"] == data["new_auth_password"]:
+            current_app.logger.warning(
+                "New authentication password cannot be the same as the old one for user: %s", current_user.id,
+            )
             return {"message": "New authentication password cannot be the same as the old one!"}, 400
 
         user.auth_password = data["new_auth_password"]
@@ -385,7 +472,6 @@ class ChangeEncryptionPassword(Resource):
             data,
             required=[
                 "old_password_derived_key",
-                "new_password_derived_key",
                 "new_iv_KEK",
                 "new_encrypted_KEK",
             ],
@@ -393,17 +479,21 @@ class ChangeEncryptionPassword(Resource):
             iv_fields=["new_iv_KEK"],
         )
         if error:
+            current_app.logger.warning("Validation error: %s", error)
             return {"message": error}, 400
 
         user = UserLogin.query.filter_by(username=current_user.id).first()
         if not user:
+            current_app.logger.warning("User not found: %s", current_user.id)
             return {"message": "User not found!"}, 404
         kek_data = UserKEK.query.filter_by(user_id=user.id).first()
         if not kek_data:
+            current_app.logger.warning("User KEK not found for user: %s", current_user.id)
             return {"message": "User KEK not found!"}, 404
 
         error = verify_password_and_kek(data["old_password_derived_key"], kek_data)
         if error:
+            current_app.logger.warning("Password verification failed for user: %s", current_user.id)
             code = 401 if "password" in error or "Authentication failed" in error else 400
             return {"message": error}, code
 
@@ -424,23 +514,31 @@ class DeleteUser(Resource):
     @auth_ns.response(404, "User not found")
     @token_required
     def delete(self, current_user: UserLogin) -> object:
-        """Delete a user and their KEK after verifying password"""
+        """Delete a user, their KEK, and any files associated with them after verifying password"""
         data = request.get_json()
         if not data or "password" not in data:
+            current_app.logger.warning("Missing required field: password")
             return {"message": "Missing required field: password"}, 400
 
         user = UserLogin.query.filter_by(id=current_user.id).first()
         if not user:
+            current_app.logger.warning("User not found: %s", current_user.id)
             return {"message": "User not found!"}, 404
 
         try:
             PasswordHasher().verify(user.auth_password, data["password"])
         except VerifyMismatchError:
+            current_app.logger.warning("Invalid password for user: %s", current_user.id)
             return {"message": "Invalid password!"}, 401
 
         kek = UserKEK.query.filter_by(user_id=current_user.id).first()
         if kek:
             db.session.delete(kek)
+
+        user_files = File.query.filter_by(user_id=current_user.id).all()
+        for file in user_files:
+            db.session.delete(file)
+
         db.session.delete(user)
         db.session.commit()
 
@@ -454,6 +552,7 @@ class DeleteUser(Resource):
         """Get all information for a user, their KEK, and their files"""
         user = UserLogin.query.filter_by(id=current_user.id).first()
         if not user:
+            current_app.logger.warning("User not found: %s", current_user.id)
             return {"message": "User not found!"}, 404
 
         kek = UserKEK.query.filter_by(user_id=current_user.id).first()

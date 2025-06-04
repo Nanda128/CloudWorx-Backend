@@ -5,6 +5,7 @@ CREATE TABLE
         auth_password TEXT NOT NULL,
         email VARCHAR(320) NOT NULL UNIQUE,
         public_key TEXT NOT NULL,
+        signing_public_key TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX (username)
@@ -64,6 +65,9 @@ CREATE TABLE
         file_type VARCHAR(32) NULL,
         file_size INT NULL,
         encrypted_file LONGBLOB NOT NULL,
+        nonce BLOB NOT NULL,
+        ephemeral_public_key BLOB NOT NULL,
+        sender_signature BLOB NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (file_id) REFERENCES files (file_id) ON DELETE CASCADE,
         FOREIGN KEY (shared_by) REFERENCES user_login (id) ON DELETE CASCADE,
