@@ -58,14 +58,20 @@ CREATE TABLE
     IF NOT EXISTS file_share (
         id CHAR(36) NOT NULL PRIMARY KEY,
         file_id CHAR(36) NOT NULL,
+        shared_by CHAR(36) NOT NULL,
         shared_with CHAR(36) NOT NULL,
-        encrypted_dek LONGBLOB NOT NULL,
-        assoc_data_dek TEXT NOT NULL,
+        file_name VARCHAR(255) NOT NULL,
+        file_type VARCHAR(32) NULL,
+        file_size INT NULL,
+        encrypted_file LONGBLOB NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (file_id) REFERENCES files (file_id) ON DELETE CASCADE,
+        FOREIGN KEY (shared_by) REFERENCES user_login (id) ON DELETE CASCADE,
         FOREIGN KEY (shared_with) REFERENCES user_login (id) ON DELETE CASCADE,
         INDEX (file_id),
-        INDEX (shared_with)
+        INDEX (shared_by),
+        INDEX (shared_with),
+        UNIQUE KEY unique_share (file_id, shared_with)
     );
 
 CREATE TABLE

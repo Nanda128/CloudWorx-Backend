@@ -189,7 +189,7 @@ class FileResource(Resource):
         resp.headers["X-File-Type"] = file.file_type
         resp.headers["X-File-IV"] = file.iv_file
         resp.headers["X-File-Assoc-Data"] = file.assoc_data_file
-        resp.headers["X-File-DEK"] = share.encrypted_dek if share and dek else ""
+        resp.headers["X-File-DEK"] = dek.encrypted_dek if share and dek else ""
         return resp
 
     @files_ns.doc(security="apikey")

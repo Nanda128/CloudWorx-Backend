@@ -16,12 +16,14 @@ def register_shares_models(shares_ns: Namespace) -> dict:
     shared_file_model = shares_ns.model(
         "SharedFileInfo",
         {
+            "share_id": fields.String(description="Share ID"),
             "file_id": fields.String(description="File ID"),
             "file_name": fields.String(description="File name"),
             "file_type": fields.String(description="File type/extension"),
-            "assoc_data_file": fields.String(description="Associated data for file"),
-            "created_at": fields.String(description="File creation timestamp"),
             "file_size": fields.Integer(description="File size in bytes"),
+            "shared_by": fields.String(description="User ID who shared the file"),
+            "shared_by_username": fields.String(description="Username who shared the file"),
+            "created_at": fields.String(description="Share creation timestamp"),
         },
     )
 
@@ -30,14 +32,22 @@ def register_shares_models(shares_ns: Namespace) -> dict:
         {
             "share_id": fields.String(description="Share ID"),
             "shared_with": fields.String(description="User ID of recipient"),
+            "shared_with_username": fields.String(description="Username of recipient"),
             "created_at": fields.String(description="Share creation timestamp"),
             "file_id": fields.String(description="File ID"),
             "file_name": fields.String(description="File name"),
             "file_size": fields.Integer(description="File size in bytes"),
             "file_type": fields.String(description="File type/extension"),
-            "encrypted_dek": fields.String(description="Encrypted data encryption key"),
-            "iv_dek": fields.String(description="Initialization vector for DEK"),
-            "assoc_data_dek": fields.String(description="Associated data for DEK"),
+        },
+    )
+
+    public_key_model = shares_ns.model(
+        "PublicKeyResponse",
+        {
+            "username": fields.String(description="Username"),
+            "user_id": fields.String(description="User ID"),
+            "public_key": fields.String(description="X25519 public key in PEM format"),
+            "tofu_message": fields.String(description="TOFU verification message"),
         },
     )
 
@@ -46,7 +56,6 @@ def register_shares_models(shares_ns: Namespace) -> dict:
             "ShareRequest",
             {
                 "shared_with_username": fields.String(required=True, description="Username to share with"),
-                "password": fields.String(required=True, description="User's encryption password"),
             },
         ),
         "share_response_model": shares_ns.model(
@@ -55,6 +64,7 @@ def register_shares_models(shares_ns: Namespace) -> dict:
                 "message": fields.String(description="Status message"),
                 "share_id": fields.String(description="Share ID"),
                 "shared_with": fields.String(description="User ID of recipient"),
+                "tofu_message": fields.String(description="TOFU verification message"),
             },
         ),
         "share_list_model": shares_ns.model(
@@ -83,4 +93,5 @@ def register_shares_models(shares_ns: Namespace) -> dict:
                 "count": fields.Integer(description="Total number of shared files"),
             },
         ),
+        "public_key_model": public_key_model,
     }
