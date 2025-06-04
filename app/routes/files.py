@@ -20,6 +20,8 @@ files_ns = Namespace("files", description="File upload, download, and management
 
 models = register_files_models(files_ns)
 
+MAX_FILENAME_LENGTH = 255
+
 
 def allowed_file(filename: str) -> bool:
     allowed_extensions = {"txt", "pdf", "png", "jpg", "jpeg", "gif", "doc", "docx", "xls", "xlsx"}
@@ -246,8 +248,8 @@ def validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, 
         file_name = secure_filename(file.filename or "")
     file_name = str(escape(file_name))
     existing_file = File.query.filter_by(file_name=file_name).first()
-    if existing_file:
-        error_response = ({"message": "A file with this name already exists"}, 400)
+    if existing_file or len(file_name) > MAX_FILENAME_LENGTH:
+        error_response = ({"message": "A file with this name already exists or the filename's too long"}, 400)
         return (file, file_name, None, None, None, None, None, error_response)
 
     iv_file = request.headers.get("X-IV-File")
@@ -261,7 +263,6 @@ def validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, 
     iv_dek = request.headers.get("X-IV-DEK")
     encrypted_dek = request.headers.get("X-Encrypted-DEK")
 
-    # Consolidate error checks
     if not iv_file:
         error_response = ({"message": "Missing IV for file encryption"}, 400)
     elif not all([iv_dek, encrypted_dek]):
