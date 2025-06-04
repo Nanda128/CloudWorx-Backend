@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import io
 import uuid
 from typing import Any
@@ -153,9 +155,11 @@ class FileResource(Resource):
                             response = self.send_owner_file(file, dek, user_kek)
         except (db.exc.SQLAlchemyError, OSError) as e:
             response = ({"message": f"Error downloading file: {str(e)!s}"}, 500)
-        return response
+        if isinstance(response, tuple):
+            return response
+        return response, 200
 
-    def send_owner_file(self, file: File, dek: FileDEK, user_kek: UserKEK) -> tuple:
+    def send_owner_file(self, file: File, dek: FileDEK, user_kek: UserKEK) -> tuple | object:
         resp = send_file(
             io.BytesIO(file.encrypted_file),
             mimetype="application/octet-stream",
@@ -226,89 +230,50 @@ class FileIdResolver(Resource):
         return {"file_id": file.file_id}, 200
 
 
-def validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any]:
+def validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any]:  # noqa: C901
     """Validate the upload request and extract file and DEK information from headers"""
-    file = None
     error_response = None
-    file_name = None
-    iv_file = None
-    file_type = None
-    file_size = None
-    iv_dek = None
-    encrypted_dek = None
 
     if "encrypted_file" not in request.files:
         error_response = ({"message": "No file part in the request"}, 400)
-    else:
-        file = request.files["encrypted_file"]
+        return (None, None, None, None, None, None, None, error_response)
 
-        if file.filename == "":
-            error_response = {"message": "No file selected"}, 400
-        else:
-            file_name = request.headers.get("X-File-Name")
-            if not file_name:
-                file_name = secure_filename(file.filename or "")
-            file_name = str(escape(file_name))
+    file = request.files["encrypted_file"]
+    if file.filename == "":
+        error_response = ({"message": "No file selected"}, 400)
+        return (file, None, None, None, None, None, None, error_response)
 
-            iv_file = request.headers.get("X-IV-File")
-            file_type = request.headers.get("X-File-Type")
-            file_size = request.headers.get("X-File-Size")
-            try:
-                file_size = int(file_size) if file_size is not None else None
-            except ValueError:
-                file_size = None
+    file_name = request.headers.get("X-File-Name")
+    if not file_name:
+        file_name = secure_filename(file.filename or "")
+    file_name = str(escape(file_name))
+    existing_file = File.query.filter_by(file_name=file_name).first()
+    if existing_file:
+        error_response = ({"message": "A file with this name already exists"}, 400)
+        return (file, file_name, None, None, None, None, None, error_response)
 
-            iv_dek = request.headers.get("X-IV-DEK")
-            encrypted_dek = request.headers.get("X-Encrypted-DEK")
+    iv_file = request.headers.get("X-IV-File")
+    file_type = request.headers.get("X-File-Type")
+    file_size = request.headers.get("X-File-Size")
+    try:
+        file_size = int(file_size) if file_size is not None else None
+    except ValueError:
+        file_size = None
 
-            if not iv_file:
-                error_response = ({"message": "Missing IV for file encryption"}, 400)
-            elif not all([iv_dek, encrypted_dek]):
-                error_response = ({"message": "Missing DEK encryption data"}, 400)
+    iv_dek = request.headers.get("X-IV-DEK")
+    encrypted_dek = request.headers.get("X-Encrypted-DEK")
+
+    # Consolidate error checks
+    if not iv_file:
+        error_response = ({"message": "Missing IV for file encryption"}, 400)
+    elif not all([iv_dek, encrypted_dek]):
+        error_response = ({"message": "Missing DEK encryption data"}, 400)
+    elif not file or not allowed_file(file.filename or "") or not file_name or not iv_file:
+        error_response = ({"message": "Missing required fields for file information"}, 400)
+    elif not iv_dek or not encrypted_dek:
+        error_response = ({"message": "Missing required fields for file DEK information"}, 400)
 
     if error_response:
-        return (
-            file,
-            file_name,
-            iv_file,
-            file_type,
-            file_size,
-            iv_dek,
-            encrypted_dek,
-            error_response,
-        )
+        return (file, file_name, iv_file, file_type, file_size, iv_dek, encrypted_dek, error_response)
 
-    if not file or not allowed_file(file.filename or "") or not file_name or not iv_file:
-        return (
-            file,
-            file_name,
-            iv_file,
-            file_type,
-            file_size,
-            iv_dek,
-            encrypted_dek,
-            ({"message": "Missing required fields for file information"}, 400),
-        )
-
-    if not iv_dek or not encrypted_dek:
-        return (
-            file,
-            file_name,
-            iv_file,
-            file_type,
-            file_size,
-            iv_dek,
-            encrypted_dek,
-            ({"message": "Missing required fields for file DEK information"}, 400),
-        )
-
-    return (
-        file,
-        file_name,
-        iv_file,
-        file_type,
-        file_size,
-        iv_dek,
-        encrypted_dek,
-        None,
-    )
+    return (file, file_name, iv_file, file_type, file_size, iv_dek, encrypted_dek, None)
