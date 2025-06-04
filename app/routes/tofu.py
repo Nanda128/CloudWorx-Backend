@@ -1,13 +1,13 @@
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import x25519
+from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
 from flask import request
 from flask_restx import Namespace, Resource
 
 from app.docs.tofu_docs import register_tofu_models
 from app.models.tofu import TrustedKey
 from app.models.user import UserLogin
-from app.utils.tofu import revoke_user_key
+from app.utils.tofu import revoke_user_key, verify_tofu_key
 from app.utils.token import token_required
 
 tofu_ns = Namespace("tofu", description="TOFU key management")
@@ -59,8 +59,7 @@ class VerifyKey(Resource):
     @tofu_ns.response(200, "Key verification result", models["verify_key_response_model"])
     @token_required
     def post(self, current_user: UserLogin) -> tuple:
-        """Manually verify an X25519 public key"""
-        from app.utils.tofu import verify_tofu_key
+        """Manually verify an X25519 or Ed25519 public key"""
 
         data = request.get_json()
         public_key = data.get("public_key")
@@ -70,10 +69,10 @@ class VerifyKey(Resource):
 
         try:
             key = serialization.load_pem_public_key(public_key.encode("utf-8"))
-            if not isinstance(key, x25519.X25519PublicKey):
-                return {"message": "Key must be an X25519 public key"}, 400
+            if not isinstance(key, (x25519.X25519PublicKey, ed25519.Ed25519PublicKey)):
+                return {"message": "Key must be an X25519 or Ed25519 public key"}, 400
         except (ValueError, TypeError, UnsupportedAlgorithm):
-            return {"message": "Invalid X25519 public key format"}, 400
+            return {"message": "Invalid public key format"}, 400
 
         is_trusted, message, trusted_key = verify_tofu_key(current_user.id, public_key)
 

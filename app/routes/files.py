@@ -157,6 +157,7 @@ class FileResource(Resource):
                             response = self.send_owner_file(file, dek, user_kek)
         except (db.exc.SQLAlchemyError, OSError) as e:
             response = ({"message": f"Error downloading file: {str(e)!s}"}, 500)
+        current_app.logger.info("File download response: %s", response)
         return response
 
     def send_owner_file(self, file: File, dek: FileDEK, user_kek: UserKEK) -> Response:
@@ -201,17 +202,21 @@ class FileResource(Resource):
         try:
             file = File.query.filter_by(file_id=file_name, created_by=current_user.id).first()
             if not file:
+                current_app.logger.warning("File %s not found for user %s", file_name, current_user.id)
                 return {"message": "File not found or access denied"}, 404
             share = FileShare.query.filter_by(file_id=file_name)
             if not share:
+                current_app.logger.warning("No shares found for file %s", file_name)
                 db.session.delete(share)
 
             db.session.delete(file)
             db.session.commit()
         except (db.exc.SQLAlchemyError, OSError) as e:
             db.session.rollback()
+            current_app.logger.exception("Error deleting file", exc_info=e)
             return {"message": f"Error deleting file: {str(e)!s}"}, 500
         else:
+            current_app.logger.info("File %s deleted successfully for user %s", file_name, current_user.id)
             return {"message": "File deleted successfully"}, 200
 
 
@@ -226,6 +231,7 @@ class FileIdResolver(Resource):
         """Resolve a file name to its file ID for the current user"""
         file = File.query.filter_by(file_name=file_name, created_by=current_user.id).first()
         if not file:
+            current_app.logger.warning("File %s not found for user %s", file_name, current_user.id)
             return {"message": "File not found"}, 404
         return {"file_id": file.file_id}, 200
 
@@ -238,20 +244,27 @@ def validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, 
 
     if "encrypted_file" not in request.files:
         error_response = ({"message": "No file part in the request"}, 400)
+        current_app.logger.warning("No file part in the request")
         return (None, None, None, None, None, None, None, error_response)
 
     file = request.files["encrypted_file"]
     if file.filename == "":
         error_response = ({"message": "No file selected"}, 400)
+        current_app.logger.warning("No file selected")
         return (file, None, None, None, None, None, None, error_response)
 
     file_name = request.headers.get("X-File-Name")
     if not file_name:
+        current_app.logger.warning("Missing X-File-Name header")
         file_name = secure_filename(file.filename or "")
     file_name = str(escape(file_name))
     existing_file = File.query.filter_by(file_name=file_name).first()
     if existing_file or len(file_name) > MAX_FILENAME_LENGTH:
         error_response = ({"message": "A file with this name already exists or the filename's too long"}, 400)
+        current_app.logger.warning(
+            "File with name %s already exists or filename is too long",
+            file_name,
+        )
         return (file, file_name, None, None, None, None, None, error_response)
 
     iv_file = request.headers.get("X-IV-File")
@@ -260,14 +273,17 @@ def validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, 
     try:
         file_size = int(file_size) if file_size is not None else None
     except ValueError:
+        current_app.logger.warning("Invalid file size: %s", file_size)
         file_size = None
 
     iv_dek = request.headers.get("X-IV-DEK")
     encrypted_dek = request.headers.get("X-Encrypted-DEK")
 
     if not iv_file:
+        current_app.logger.warning("Missing IV for file encryption")
         error_response = ({"message": "Missing IV for file encryption"}, 400)
     elif not all([iv_dek, encrypted_dek]):
+        current_app.logger.warning("Missing DEK encryption data")
         error_response = ({"message": "Missing DEK encryption data"}, 400)
     elif not file or not allowed_file(file.filename or "") or not file_name or not iv_file:
         current_app.logger.warning("%s", not file)
@@ -277,6 +293,7 @@ def validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, 
         current_app.logger.warning("%s", not iv_file)
         error_response = ({"message": "Missing required fields for file information"}, 400)
     elif not iv_dek or not encrypted_dek:
+        current_app.logger.warning("Missing required fields for DEK information")
         error_response = ({"message": "Missing required fields for file DEK information"}, 400)
 
     if error_response:

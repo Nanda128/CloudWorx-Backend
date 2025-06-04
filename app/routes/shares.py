@@ -98,7 +98,9 @@ class FileShareResource(Resource):
         )
 
         result = self.get_file_and_recipient(
-            current_user, file_id, shared_with_username,
+            current_user,
+            file_id,
+            shared_with_username,
         )
         if result is None:
             return {"message": "Internal error retrieving file or recipient"}, 500
@@ -162,7 +164,10 @@ class FileShareResource(Resource):
             }, 201
 
     def get_file_and_recipient(
-        self, current_user: UserLogin, file_id: str, shared_with_username: str,
+        self,
+        current_user: UserLogin,
+        file_id: str,
+        shared_with_username: str,
     ) -> tuple | None:
         file = File.query.filter_by(file_id=file_id, created_by=current_user.id).first()
         if not file:
@@ -381,14 +386,21 @@ class SharedFileDownload(Resource):
         try:
             share = FileShare.query.filter_by(id=share_id, shared_with=current_user.id).first()
             if not share:
+                current_app.logger.warning(
+                    "Shared file with ID %s not found or access denied for user %s",
+                    share_id,
+                    current_user.username,
+                )
                 return {"message": "Shared file not found or access denied"}, 404
 
-            # Get sender's public keys for verification
             sender = UserLogin.query.filter_by(id=share.shared_by).first()
             if not sender:
+                current_app.logger.warning(
+                    "Sender user %s not found for share ID %s",
+                    share.shared_by,
+                    share_id,
+                )
                 return {"message": "Sender user not found"}, 404
-
-            import base64
 
             response_data = {
                 "file_id": share.file_id,

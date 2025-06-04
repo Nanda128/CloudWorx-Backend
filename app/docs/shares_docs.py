@@ -60,7 +60,8 @@ def register_shares_models(shares_ns: Namespace) -> dict:
                 "encrypted_file": fields.String(required=True, description="Base64-encoded encrypted file data"),
                 "nonce": fields.String(required=True, description="Base64-encoded AES-GCM nonce"),
                 "ephemeral_public_key": fields.String(
-                    required=True, description="Base64-encoded ephemeral X25519 public key",
+                    required=True,
+                    description="Base64-encoded ephemeral X25519 public key",
                 ),
                 "signature": fields.String(required=True, description="Base64-encoded Ed25519 signature"),
             },

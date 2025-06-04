@@ -10,6 +10,7 @@ class TrustStatus(Enum):
     REVOKED = "revoked"
     SUSPICIOUS = "suspicious"
 
+
 class TrustedKey(db.Model):
     __tablename__ = "trusted_keys"
 

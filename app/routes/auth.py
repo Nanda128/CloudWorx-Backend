@@ -438,13 +438,15 @@ class ChangeAuthPassword(Resource):
             PasswordHasher().verify(user.auth_password, data["old_auth_password"])
         except VerifyMismatchError:
             current_app.logger.warning(
-                "Invalid old authentication password for user: %s", current_user.id,
+                "Invalid old authentication password for user: %s",
+                current_user.id,
             )
             return {"message": "Invalid old authentication password!"}, 401
 
         if data["old_auth_password"] == data["new_auth_password"]:
             current_app.logger.warning(
-                "New authentication password cannot be the same as the old one for user: %s", current_user.id,
+                "New authentication password cannot be the same as the old one for user: %s",
+                current_user.id,
             )
             return {"message": "New authentication password cannot be the same as the old one!"}, 400
 
