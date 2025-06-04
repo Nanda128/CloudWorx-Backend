@@ -234,6 +234,8 @@ def validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, 
     """Validate the upload request and extract file and DEK information from headers"""
     error_response = None
 
+    current_app.logger.info("Received headers: %s", dict(request.headers))
+
     if "encrypted_file" not in request.files:
         error_response = ({"message": "No file part in the request"}, 400)
         return (None, None, None, None, None, None, None, error_response)
