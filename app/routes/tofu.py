@@ -56,7 +56,7 @@ class RevokeKey(Resource):
 class VerifyKey(Resource):
     @tofu_ns.doc(security="apikey")
     @tofu_ns.expect(models["verify_key_request_model"])
-    @tofu_ns.response(200, "Key verification result", models["verify_key_response_model"])
+    @tofu_ns.response(200, "Key verified successfully", models["verify_key_response_model"])
     @token_required
     def post(self, current_user: UserLogin) -> tuple:
         """Manually verify an X25519 or Ed25519 public key"""

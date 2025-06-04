@@ -211,7 +211,7 @@ def validate_register_data(data: dict) -> str | None:
 @auth_ns.route("/register")
 class Register(Resource):
     @auth_ns.expect(models["register_model"])
-    @auth_ns.response(201, "User created successfully!")
+    @auth_ns.response(201, "User created successfully!", models["register_response_model"])
     @auth_ns.response(400, "Validation error")
     @auth_ns.response(409, "Username already exists!")
     def post(self) -> object:

@@ -67,6 +67,16 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 ),
             },
         ),
+        "register_response_model": auth_ns.model(
+            "RegisterResponse",
+            {
+                "message": fields.String(description="Success message"),
+                "user_id": fields.String(description="Generated user ID"),
+                "key_fingerprint": fields.String(description="Public key fingerprint"),
+                "tofu_message": fields.String(description="TOFU verification message"),
+                "token": fields.String(description="JWT authentication token"),
+            },
+        ),
         "login_model": auth_ns.model(
             "Login",
             {

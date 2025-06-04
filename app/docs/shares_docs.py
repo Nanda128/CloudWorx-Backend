@@ -106,12 +106,6 @@ def register_shares_models(shares_ns: Namespace) -> dict:
                 "shared_with_username": fields.String(required=True, description="Username to revoke share from"),
             },
         ),
-        "revoke_response_model": shares_ns.model(
-            "RevokeResponse",
-            {
-                "message": fields.String(description="Status message"),
-            },
-        ),
         "files_list_model": shares_ns.model(
             "SharedFilesList",
             {

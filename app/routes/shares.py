@@ -28,7 +28,7 @@ ED25519_SIGNATURE_LENGTH = 64
 @shares_ns.param("username", "The username to get public key for")
 class PublicKeyResource(Resource):
     @shares_ns.doc(security="apikey")
-    @shares_ns.response(200, "Public key retrieved successfully")
+    @shares_ns.response(200, "Public key retrieved successfully", models["public_key_model"])
     @shares_ns.response(404, "User not found")
     @token_required
     def get(self, _current_user: UserLogin, username: str) -> tuple:
@@ -279,7 +279,7 @@ class FileShareResource(Resource):
 
     @shares_ns.doc(security="apikey")
     @shares_ns.expect(models["revoke_request_model"])
-    @shares_ns.response(200, "Access revoked", models["revoke_response_model"])
+    @shares_ns.response(200, "Access revoked")
     @shares_ns.response(404, "File or share not found")
     @token_required
     def delete(self, current_user: UserLogin, file_id: str) -> tuple:
@@ -382,7 +382,7 @@ class SharedFileDownload(Resource):
     @shares_ns.response(404, "Shared file not found")
     @token_required
     def get(self, current_user: UserLogin, share_id: str) -> tuple[dict, int]:
-        """Return encrypted file and all cryptographic artifacts for client-side decryption"""
+        """Return **encrypted file** and all cryptographic artifacts for client-side decryption"""
         try:
             share = FileShare.query.filter_by(id=share_id, shared_with=current_user.id).first()
             if not share:
