@@ -171,4 +171,10 @@ def register_auth_models(auth_ns: Namespace) -> dict:
                 "kek_created_at": fields.String(description="ISO8601 KEK creation timestamp", required=False),
             },
         ),
+        "get_username_by_id_response_model": auth_ns.model(
+            "GetUsernameByIdResponse",
+            {
+                "username": fields.String(description="Username of the user"),
+            },
+        ),
     }

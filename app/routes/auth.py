@@ -619,3 +619,16 @@ class GetAllUsers(Resource):
             return {"message": "Server error retrieving users"}, 500
         else:
             return {"users": users_list}, 200
+
+
+@auth_ns.route("/username/<string:user_id>")
+class GetUsernameById(Resource):
+    @auth_ns.response(200, "Username retrieved successfully", models["get_username_by_id_response_model"])
+    @auth_ns.response(404, "User not found")
+    def get(self, user_id: str) -> object:
+        """Get username by user UUID"""
+        user = UserLogin.query.filter_by(id=user_id).first()
+        if not user:
+            current_app.logger.warning("User not found for UUID: %s", user_id)
+            return {"message": "User not found!"}, 404
+        return {"username": user.username}, 200
