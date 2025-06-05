@@ -30,11 +30,34 @@ def calculate_key_fingerprint(public_key_pem: str) -> str:
         raise ValueError(msg) from e
 
 
+def fix_invalid_enum_values() -> None:
+    """Fix invalid enum values in the database by updating lowercase to uppercase"""
+    try:
+        current_app.logger.info("Attempting to fix invalid enum values in trusted_keys table")
+
+        db.session.execute(
+            text("UPDATE trusted_keys SET trust_status = 'TRUSTED' WHERE trust_status = 'trusted'"),
+        )
+        db.session.execute(
+            text("UPDATE trusted_keys SET trust_status = 'REVOKED' WHERE trust_status = 'revoked'"),
+        )
+        db.session.execute(
+            text("UPDATE trusted_keys SET trust_status = 'SUSPICIOUS' WHERE trust_status = 'suspicious'"),
+        )
+
+        current_app.logger.info("Successfully fixed invalid enum values")
+
+    except Exception:
+        current_app.logger.exception("Failed to fix invalid enum values")
+        raise
+
+
 def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, TrustedKey | None]:
     """Verify a public key using TOFU principles"""
     try:
         fingerprint = calculate_key_fingerprint(public_key_pem)
 
+        trusted_key = None
         try:
             trusted_key = TrustedKey.query.filter_by(
                 user_id=user_id,
@@ -47,20 +70,21 @@ def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, Trust
                 str(e),
                 type(e).__name__,
             )
+
             try:
                 current_app.logger.info("Attempting to fix invalid enum values...")
                 fix_invalid_enum_values()
                 db.session.commit()
                 current_app.logger.info("Database enum fix completed, retrying query...")
+
                 trusted_key = TrustedKey.query.filter_by(
                     user_id=user_id,
                     key_fingerprint=fingerprint,
                 ).first()
                 current_app.logger.info("Successfully retrieved trusted key after fix")
-            except (SQLAlchemyError, LookupError) as fix_error:
-                current_app.logger.exception(
-                    "Failed to fix database enum values.",
-                )
+
+            except Exception:
+                current_app.logger.exception("Failed to fix database enum values")
                 try:
                     db.session.rollback()
                 except Exception:
@@ -68,7 +92,7 @@ def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, Trust
 
                 return (
                     False,
-                    f"Database integrity error - original: {type(e).__name__}, fix failed: {type(fix_error).__name__}",
+                    "Database integrity error - please contact administrator",
                     None,
                 )
 
@@ -125,28 +149,6 @@ def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, Trust
         return True, "Key trusted on first use", new_trusted_key
 
 
-def fix_invalid_enum_values() -> None:
-    """Fix invalid enum values in the database by updating lowercase to uppercase"""
-    try:
-        current_app.logger.info("Attempting to fix invalid enum values in trusted_keys table")
-
-        db.session.execute(
-            text("UPDATE trusted_keys SET trust_status = 'TRUSTED' WHERE trust_status = 'trusted'"),
-        )
-        db.session.execute(
-            text("UPDATE trusted_keys SET trust_status = 'REVOKED' WHERE trust_status = 'revoked'"),
-        )
-        db.session.execute(
-            text("UPDATE trusted_keys SET trust_status = 'SUSPICIOUS' WHERE trust_status = 'suspicious'"),
-        )
-
-        current_app.logger.info("Successfully fixed invalid enum values")
-
-    except Exception:
-        current_app.logger.exception("Failed to fix invalid enum values")
-        raise
-
-
 def revoke_user_key(user_id: str, key_fingerprint: str) -> bool:
     """Revoke a trusted key"""
     try:
@@ -176,13 +178,11 @@ def validate_trust_status_integrity() -> list[str]:
     """Check for any invalid enum values in the database and return issues found"""
     issues = []
     try:
-        from sqlalchemy import text
-
         result = db.session.execute(
             text(
                 (
                     "SELECT id, user_id, trust_status FROM trusted_keys "
-                    "WHERE trust_status IN ('trusted', 'revoked', 'suspicious')"
+                    "WHERE trust_status NOT IN ('TRUSTED', 'REVOKED', 'SUSPICIOUS')"
                 ),
             ),
         ).fetchall()

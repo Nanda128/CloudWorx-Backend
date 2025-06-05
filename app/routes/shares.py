@@ -52,10 +52,14 @@ class PublicKeyResource(Resource):
             current_app.logger.warning("Invalid public key format for user %s", username)
             return {"message": "User has invalid public key format"}, 400
 
-        is_trusted, tofu_message, _ = verify_tofu_key(user.id, user.public_key)
-        if not is_trusted:
-            current_app.logger.warning("TOFU verification failed for public key request: %s", tofu_message)
-            return {"message": f"Key verification failed: {tofu_message}"}, 400
+        try:
+            is_trusted, tofu_message, _ = verify_tofu_key(user.id, user.public_key)
+            if not is_trusted:
+                current_app.logger.warning("TOFU verification failed for public key request: %s", tofu_message)
+                return {"message": f"Key verification failed: {tofu_message}"}, 400
+        except Exception:
+            current_app.logger.exception("Unexpected error during TOFU verification")
+            return {"message": "Key verification service temporarily unavailable"}, 503
 
         return {
             "username": user.username,
