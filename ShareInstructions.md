@@ -209,6 +209,33 @@ Authorization: Bearer <bob_jwt_token>
 }
 ```
 
+### Step 4a-alt: Alice Lists Files She Has Shared (`GET /api/shares/shared-by-me`)
+
+```http
+GET /api/shares/shared-by-me
+Authorization: Bearer <alice_jwt_token>
+```
+
+**Response:**
+
+```json
+{
+  "files": [
+    {
+      "share_id": "share-789-xyz",
+      "file_id": "abc123-def456-ghi789",
+      "file_name": "document.pdf",
+      "file_type": "pdf",
+      "file_size": 524288,
+      "shared_with": "bob-user-id-456",
+      "shared_with_username": "bob",
+      "created_at": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "count": 1
+}
+```
+
 ### Step 4b: Bob Downloads the Encrypted Data (`GET /api/shares/download/share-789-xyz`)
 
 ```http

@@ -489,3 +489,36 @@ class SharedFileDownload(Resource):
             return {"message": f"Error retrieving file: {e!s}"}, 500
         else:
             return response_data, 200
+
+
+@shares_ns.route("/shared-by-me")
+class FilesSharedByMe(Resource):
+    @shares_ns.doc(security="apikey")
+    @shares_ns.response(200, "Files shared by the user retrieved successfully", models["files_shared_by_me_model"])
+    @token_required
+    def get(self, current_user: UserLogin) -> tuple:
+        """Get all files shared by the current user"""
+        try:
+            shares = FileShare.query.filter_by(shared_by=current_user.id).all()
+            files_data = []
+
+            for share in shares:
+                shared_with_user = UserLogin.query.filter_by(id=share.shared_with).first()
+                files_data.append(
+                    {
+                        "share_id": share.id,
+                        "file_id": share.file_id,
+                        "file_name": share.file_name,
+                        "file_type": share.file_type,
+                        "file_size": share.file_size,
+                        "shared_with": share.shared_with,
+                        "shared_with_username": shared_with_user.username if shared_with_user else "Unknown",
+                        "created_at": share.created_at.isoformat() if share.created_at else None,
+                    },
+                )
+
+            current_app.logger.info("Retrieved %d files shared by user %s", len(files_data), current_user.username)
+            return {"files": files_data, "count": len(files_data)}, 200
+        except Exception:
+            current_app.logger.exception("Database error retrieving files shared by user")
+            return {"files": [], "count": 0}, 500

@@ -52,6 +52,20 @@ def register_shares_models(shares_ns: Namespace) -> dict:
         },
     )
 
+    shared_by_me_file_model = shares_ns.model(
+        "SharedByMeFileInfo",
+        {
+            "share_id": fields.String(description="Share ID"),
+            "file_id": fields.String(description="File ID"),
+            "file_name": fields.String(description="File name"),
+            "file_type": fields.String(description="File type/extension"),
+            "file_size": fields.Integer(description="File size in bytes"),
+            "shared_with": fields.String(description="User ID of recipient"),
+            "shared_with_username": fields.String(description="Username of recipient"),
+            "created_at": fields.String(description="Share creation timestamp"),
+        },
+    )
+
     return {
         "share_request_model": shares_ns.model(
             "ShareRequest",
@@ -111,6 +125,13 @@ def register_shares_models(shares_ns: Namespace) -> dict:
             {
                 "files": fields.List(fields.Nested(shared_file_model)),
                 "count": fields.Integer(description="Total number of shared files"),
+            },
+        ),
+        "files_shared_by_me_model": shares_ns.model(
+            "FilesSharedByMeList",
+            {
+                "files": fields.List(fields.Nested(shared_by_me_file_model)),
+                "count": fields.Integer(description="Total number of files shared by user"),
             },
         ),
         "public_key_model": public_key_model,
