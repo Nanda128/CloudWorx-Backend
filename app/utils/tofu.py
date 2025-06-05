@@ -5,6 +5,7 @@ import hashlib
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import x25519
 from flask import current_app
+from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
 from app.models.tofu import TrustedKey, TrustStatus
@@ -33,10 +34,29 @@ def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, Trust
     try:
         fingerprint = calculate_key_fingerprint(public_key_pem)
 
-        trusted_key = TrustedKey.query.filter_by(
-            user_id=user_id,
-            key_fingerprint=fingerprint,
-        ).first()
+        try:
+            trusted_key = TrustedKey.query.filter_by(
+                user_id=user_id,
+                key_fingerprint=fingerprint,
+            ).first()
+        except SQLAlchemyError as e:
+            current_app.logger.warning(
+                "Database error loading trusted key for user %s: %s",
+                user_id,
+                str(e),
+            )
+            try:
+                fix_invalid_enum_values()
+                db.session.commit()
+                trusted_key = TrustedKey.query.filter_by(
+                    user_id=user_id,
+                    key_fingerprint=fingerprint,
+                ).first()
+            except SQLAlchemyError:
+                current_app.logger.exception(
+                    "Failed to fix database enum values",
+                )
+                return False, "Database integrity error - please contact administrator", None
 
         if trusted_key:
             if trusted_key.public_key == public_key_pem:
@@ -70,6 +90,29 @@ def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, Trust
         return False, f"TOFU verification error: {e!s}", None
     else:
         return True, "Key trusted on first use", new_trusted_key
+
+
+def fix_invalid_enum_values() -> None:
+    """Fix invalid enum values in the database by updating lowercase to uppercase"""
+    try:
+        current_app.logger.info("Attempting to fix invalid enum values in trusted_keys table")
+
+        from sqlalchemy import text
+        db.session.execute(
+            text("UPDATE trusted_keys SET trust_status = 'TRUSTED' WHERE trust_status = 'trusted'"),
+        )
+        db.session.execute(
+            text("UPDATE trusted_keys SET trust_status = 'REVOKED' WHERE trust_status = 'revoked'"),
+        )
+        db.session.execute(
+            text("UPDATE trusted_keys SET trust_status = 'SUSPICIOUS' WHERE trust_status = 'suspicious'"),
+        )
+
+        current_app.logger.info("Successfully fixed invalid enum values")
+
+    except Exception:
+        current_app.logger.exception("Failed to fix invalid enum values")
+        raise
 
 
 def revoke_user_key(user_id: str, key_fingerprint: str) -> bool:

@@ -278,11 +278,11 @@ class Register(Resource):
                     db.session.delete(new_user)
                     db.session.commit()
                     current_app.logger.warning(
-                        "TOFU verification failed for user %s with public key %s",
+                        "TOFU verification failed for user %s: %s",
                         user_id,
-                        decoded_public_key,
+                        tofu_message,
                     )
-                    return {"message": tofu_message}, 400
+                    return {"message": f"Key verification failed: {tofu_message}"}, 400
 
                 key_fingerprint = calculate_key_fingerprint(decoded_public_key)
                 current_app.logger.info(
