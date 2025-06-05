@@ -21,7 +21,7 @@ class TrustedKey(db.Model):
         nullable=False,
     )
     key_fingerprint = db.Column(db.String(64), nullable=False, index=True)
-    public_key = db.Column(db.Text, nullable=False)  # X25519 PEM format
+    public_key = db.Column(db.Text, nullable=False)
     first_seen = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     last_verified = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     trust_status = db.Column(db.Enum(TrustStatus), default=TrustStatus.TRUSTED)
