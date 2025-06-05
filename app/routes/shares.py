@@ -57,8 +57,11 @@ class PublicKeyResource(Resource):
             if not is_trusted:
                 current_app.logger.warning("TOFU verification failed for public key request: %s", tofu_message)
                 return {"message": f"Key verification failed: {tofu_message}"}, 400
+        except (LookupError, ValueError) as e:
+            current_app.logger.warning("Database enum error during TOFU verification for user %s: %s", username, str(e))
+            tofu_message = "Key verification temporarily unavailable - proceeding with caution"
         except Exception:
-            current_app.logger.exception("Unexpected error during TOFU verification")
+            current_app.logger.exception("Unexpected error during TOFU verification for user %s", username)
             return {"message": "Key verification service temporarily unavailable"}, 503
 
         return {
@@ -216,6 +219,26 @@ class FileShareResource(Resource):
                 tofu_message,
             )
             return None, None, None, ({"message": f"Key verification failed: {tofu_message}"}, 400)
+
+        try:
+            is_trusted, tofu_message, _ = verify_tofu_key(recipient.id, recipient.public_key)
+            if not is_trusted:
+                current_app.logger.warning(
+                    "TOFU verification failed for recipient %s: %s",
+                    recipient.username,
+                    tofu_message,
+                )
+                return None, None, None, ({"message": f"Key verification failed: {tofu_message}"}, 400)
+        except (LookupError, ValueError) as e:
+            current_app.logger.warning(
+                "Database enum error during TOFU verification for recipient %s: %s", recipient.username, str(e),
+            )
+            tofu_message = "Key verification temporarily unavailable - proceeding with caution"
+        except Exception:
+            current_app.logger.exception(
+                "Unexpected error during TOFU verification for recipient %s", recipient.username,
+            )
+            return None, None, None, ({"message": "Key verification service temporarily unavailable"}, 503)
 
         return file, recipient, tofu_message, None
 
