@@ -437,7 +437,11 @@ class FilesSharedWithMe(Resource):
 @shares_ns.param("share_id", "The share identifier")
 class SharedFileDownload(Resource):
     @shares_ns.doc(security="apikey")
-    @shares_ns.response(200, "Encrypted file and cryptographic data retrieved successfully")
+    @shares_ns.response(
+        200,
+        "Encrypted file and cryptographic data retrieved successfully",
+        models["download_response_model"],
+    )
     @shares_ns.response(403, "Access denied")
     @shares_ns.response(404, "Shared file not found")
     @token_required
