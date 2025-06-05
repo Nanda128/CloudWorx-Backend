@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import uuid
 
 from cryptography.hazmat.primitives import serialization
@@ -73,6 +74,20 @@ class PublicKeyResource(Resource):
         }, 200
 
 
+def validate_base64_data(data: str, field_name: str) -> tuple[bool, str, bytes | None]:
+    """Validate and decode base64 data, returning success status, error message, and decoded data"""
+    try:
+        if not data.replace("=", "").replace("+", "").replace("/", "").isalnum():
+            return False, f"Invalid characters in {field_name} - must be valid base64", None
+
+        decoded_data = base64.b64decode(data, validate=True)
+    except (binascii.Error, ValueError) as e:
+        current_app.logger.warning("Base64 validation failed for %s: %s", field_name, str(e))
+        return False, f"Invalid base64 encoding for {field_name}: {e!s}", None
+    else:
+        return True, "", decoded_data
+
+
 @shares_ns.route("/<file_id>/share")
 @shares_ns.param("file_id", "The file identifier")
 class FileShareResource(Resource):
@@ -115,11 +130,27 @@ class FileShareResource(Resource):
         if error_response:
             return error_response
 
+        # Validate and decode all base64 fields
+        base64_fields = [
+            ("encrypted_file", encrypted_file_base64),
+            ("nonce", nonce_base64),
+            ("ephemeral_public_key", ephemeral_public_key_base64),
+            ("signature", signature_base64),
+        ]
+
+        decoded_data = {}
+        for field_name, field_data in base64_fields:
+            is_valid, error_msg, decoded = validate_base64_data(field_data, field_name)
+            if not is_valid:
+                current_app.logger.warning("Base64 validation failed for %s: %s", field_name, error_msg)
+                return {"message": error_msg}, 400
+            decoded_data[field_name] = decoded
+
         try:
-            encrypted_file_data = base64.b64decode(encrypted_file_base64)
-            nonce_data = base64.b64decode(nonce_base64)
-            ephemeral_public_key_data = base64.b64decode(ephemeral_public_key_base64)
-            signature_data = base64.b64decode(signature_base64)
+            encrypted_file_data = decoded_data["encrypted_file"]
+            nonce_data = decoded_data["nonce"]
+            ephemeral_public_key_data = decoded_data["ephemeral_public_key"]
+            signature_data = decoded_data["signature"]
 
             if len(ephemeral_public_key_data) != EPHEMERAL_PUBLIC_KEY_LENGTH:
                 current_app.logger.warning(
@@ -231,12 +262,15 @@ class FileShareResource(Resource):
                 return None, None, None, ({"message": f"Key verification failed: {tofu_message}"}, 400)
         except (LookupError, ValueError) as e:
             current_app.logger.warning(
-                "Database enum error during TOFU verification for recipient %s: %s", recipient.username, str(e),
+                "Database enum error during TOFU verification for recipient %s: %s",
+                recipient.username,
+                str(e),
             )
             tofu_message = "Key verification temporarily unavailable - proceeding with caution"
         except Exception:
             current_app.logger.exception(
-                "Unexpected error during TOFU verification for recipient %s", recipient.username,
+                "Unexpected error during TOFU verification for recipient %s",
+                recipient.username,
             )
             return None, None, None, ({"message": "Key verification service temporarily unavailable"}, 503)
 

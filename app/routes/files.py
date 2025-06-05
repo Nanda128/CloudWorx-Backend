@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import io
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from flask import Request, Response, current_app, request, send_file
 from flask_restx import Namespace, Resource
@@ -15,6 +17,9 @@ from app.models.file import File, FileDEK
 from app.models.share import FileShare
 from app.models.user import UserKEK, UserLogin
 from app.utils.token import token_required
+
+if TYPE_CHECKING:
+    from werkzeug.datastructures import FileStorage
 
 files_ns = Namespace("files", description="File upload, download, and management")
 
@@ -249,49 +254,80 @@ class FileIdResolver(Resource):
         return {"file_id": file.file_id}, 200
 
 
-def validate_upload_request(request: Request, current_user: UserLogin) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any]:  # noqa: C901
-    """Validate the upload request and extract file and DEK information from headers"""
-    error_response = None
+def validate_base64_header(value: str, header_name: str) -> tuple[bool, str]:
+    """Validate that a header value is valid base64"""
+    try:
+        if not value.replace("=", "").replace("+", "").replace("/", "").isalnum():
+            return False, f"Invalid characters in {header_name} - must be valid base64"
+        base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError) as e:
+        return False, f"Invalid base64 encoding for {header_name}: {e!s}"
+    else:
+        return True, ""
 
+
+def validate_upload_request(request: Request, current_user: UserLogin) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any]:
+    """Validate the upload request and extract file and DEK information from headers"""
     current_app.logger.info("Received headers: %s", dict(request.headers))
 
-    if "encrypted_file" not in request.files:
-        error_response = ({"message": "No file part in the request"}, 400)
-        current_app.logger.warning("No file part in the request")
-        return (None, None, None, None, None, None, None, error_response)
-
-    file = request.files["encrypted_file"]
-    if file.filename == "":
-        error_response = ({"message": "No file selected"}, 400)
-        current_app.logger.warning("No file selected")
+    file, error_response = extract_file_from_request(request)
+    if error_response:
         return (file, None, None, None, None, None, None, error_response)
 
+    file_name, error_response = extract_and_validate_filename(request, file, current_user)
+    if error_response:
+        return (file, file_name, None, None, None, None, None, error_response)
+
+    iv_file, file_type, file_size, iv_dek, encrypted_dek, error_response = extract_and_validate_headers(request)
+    if error_response:
+        return (file, file_name, iv_file, file_type, file_size, iv_dek, encrypted_dek, error_response)
+
+    error_response = validate_base64_headers(iv_file, iv_dek, encrypted_dek)
+    if error_response:
+        return (file, file_name, iv_file, file_type, file_size, iv_dek, encrypted_dek, error_response)
+
+    current_app.logger.info("File validation successful for: %s", file_name)
+    return (file, file_name, iv_file, file_type, file_size, iv_dek, encrypted_dek, None)
+
+
+def extract_file_from_request(request: Request) -> tuple[Any, Any]:
+    if "encrypted_file" not in request.files:
+        current_app.logger.warning("No file part in the request")
+        return None, ({"message": "No file part in the request"}, 400)
+    file = request.files["encrypted_file"]
+    if file.filename == "":
+        current_app.logger.warning("No file selected")
+        return file, ({"message": "No file selected"}, 400)
+    return file, None
+
+
+def extract_and_validate_filename(request: Request, file: FileStorage, current_user: UserLogin) -> tuple[Any, Any]:
     file_name = request.headers.get("X-File-Name")
     if not file_name:
         current_app.logger.warning("Missing X-File-Name header")
         file_name = secure_filename(file.filename or "")
 
     current_app.logger.info("Original filename: %s, Header filename: %s", file.filename, file_name)
-
     file_name = str(escape(file_name))
     current_app.logger.info("Final processed filename: %s", file_name)
 
     if not allowed_file(file_name):
-        error_response = ({"message": f"File type not allowed. Filename: {file_name}"}, 400)
         current_app.logger.warning("File type not allowed for filename: %s", file_name)
-        return (file, file_name, None, None, None, None, None, error_response)
+        return file_name, ({"message": f"File type not allowed. Filename: {file_name}"}, 400)
 
     existing_file = File.query.filter_by(file_name=file_name, created_by=current_user.id).first()
     if existing_file:
-        error_response = ({"message": f"A file with this name already exists: {file_name}"}, 400)
         current_app.logger.warning("File with name %s already exists for user %s", file_name, current_user.id)
-        return (file, file_name, None, None, None, None, None, error_response)
+        return file_name, ({"message": f"A file with this name already exists: {file_name}"}, 400)
 
     if len(file_name) > MAX_FILENAME_LENGTH:
-        error_response = ({"message": f"Filename too long (max {MAX_FILENAME_LENGTH} characters): {file_name}"}, 400)
         current_app.logger.warning("Filename too long: %s", file_name)
-        return (file, file_name, None, None, None, None, None, error_response)
+        return file_name, ({"message": f"Filename too long (max {MAX_FILENAME_LENGTH} characters): {file_name}"}, 400)
 
+    return file_name, None
+
+
+def extract_and_validate_headers(request: Request) -> tuple[Any, Any, Any, Any, Any, Any]:
     iv_file = request.headers.get("X-IV-File")
     file_type = request.headers.get("X-File-Type")
     file_size = request.headers.get("X-File-Size")
@@ -306,16 +342,47 @@ def validate_upload_request(request: Request, current_user: UserLogin) -> tuple[
 
     if not iv_file:
         current_app.logger.warning("Missing IV for file encryption")
-        error_response = ({"message": "Missing IV for file encryption (X-IV-File header)"}, 400)
-    elif not iv_dek:
+        return (
+            iv_file,
+            file_type,
+            file_size,
+            iv_dek,
+            encrypted_dek,
+            ({"message": "Missing IV for file encryption (X-IV-File header)"}, 400),
+        )
+    if not iv_dek:
         current_app.logger.warning("Missing IV for DEK encryption")
-        error_response = ({"message": "Missing IV for DEK encryption (X-IV-DEK header)"}, 400)
-    elif not encrypted_dek:
+        return (
+            iv_file,
+            file_type,
+            file_size,
+            iv_dek,
+            encrypted_dek,
+            ({"message": "Missing IV for DEK encryption (X-IV-DEK header)"}, 400),
+        )
+    if not encrypted_dek:
         current_app.logger.warning("Missing encrypted DEK")
-        error_response = ({"message": "Missing encrypted DEK (X-Encrypted-DEK header)"}, 400)
+        return (
+            iv_file,
+            file_type,
+            file_size,
+            iv_dek,
+            encrypted_dek,
+            ({"message": "Missing encrypted DEK (X-Encrypted-DEK header)"}, 400),
+        )
 
-    if error_response:
-        return (file, file_name, iv_file, file_type, file_size, iv_dek, encrypted_dek, error_response)
+    return iv_file, file_type, file_size, iv_dek, encrypted_dek, None
 
-    current_app.logger.info("File validation successful for: %s", file_name)
-    return (file, file_name, iv_file, file_type, file_size, iv_dek, encrypted_dek, None)
+
+def validate_base64_headers(iv_file: str, iv_dek: str, encrypted_dek: str) -> tuple[dict, int] | None:
+    base64_headers = [
+        (iv_file, "X-IV-File"),
+        (iv_dek, "X-IV-DEK"),
+        (encrypted_dek, "X-Encrypted-DEK"),
+    ]
+    for header_value, header_name in base64_headers:
+        is_valid, validation_error = validate_base64_header(header_value, header_name)
+        if not is_valid:
+            current_app.logger.warning("Base64 validation failed for %s: %s", header_name, validation_error)
+            return ({"message": validation_error}, 400)
+    return None

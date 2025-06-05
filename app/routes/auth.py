@@ -61,9 +61,11 @@ def validate_base64(value: str, name: str) -> tuple[bool, str]:
     """Validate that a value is a valid base64 string"""
     current_app.logger.info("Validating base64 encoding for %s", name)
     try:
-        base64.b64decode(value)
-    except (binascii.Error, ValueError):
-        return False, f"Invalid base64 encoding for {name}"
+        if not value.replace("=", "").replace("+", "").replace("/", "").isalnum():
+            return False, f"Invalid characters in {name} - must be valid base64"
+        base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError) as e:
+        return False, f"Invalid base64 encoding for {name}: {e!s}"
     else:
         return True, ""
 
