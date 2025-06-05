@@ -39,31 +39,16 @@ The other two repositories are:
 
 ## Running the Application Locally
 
-1. Make a copy of the `.env.sample` file and rename that copy to `.env`. Update the values in the `.env` file as needed.
+1. Make a copy of the `env.sample` file and rename that copy to `.env`. Update the values in the `.env` file as needed.
 
 2. Look through the `.env` file and make sure USE_LOCAL_CONFIG is set to `1` to use the local configuration.
 
-3. For secure TCP connections, generate TLS certificates or provide your own:
-
-    ```bash
-    # Generate self-signed certificates for testing
-    openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes
-    ```
-
-    You can also run:
-
-    ```bash
-    python utils/generate_cert.py --common-name cloudworx.local --output-dir .
-    ```
-
-   For production, use properly issued certificates from a trusted CA.
-
-4. Navigate to `wsgi` and run the application:
+3. Navigate to `wsgi` and run the application:
 
     ```bash
     python -m wsgi
     ```
 
-5. The application will now be available at `http://127.0.0.1:5000/` for HTTP API access, and `http://0.0.0.0:6174` for secure TCP connections.
+4. The application will now be available at `http://127.0.0.1:6174/` for HTTP API access
 
-You can find the documentation for the API at `http://127.0.0.1:5000/docs` on the local config or alternatively at `http://networkninjas.gobbler.info/docs`
+You can find the documentation for the API at `http://127.0.0.1:5000/docs` on the local config or alternatively at `https://networkninjas.gobbler.info/docs`

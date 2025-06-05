@@ -130,7 +130,6 @@ class FileShareResource(Resource):
         if error_response:
             return error_response
 
-        # Validate and decode all base64 fields
         base64_fields = [
             ("encrypted_file", encrypted_file_base64),
             ("nonce", nonce_base64),

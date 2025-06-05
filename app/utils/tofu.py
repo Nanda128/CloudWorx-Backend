@@ -81,7 +81,6 @@ def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, Trust
                 fix_invalid_enum_values()
                 current_app.logger.info("Database enum fix completed, retrying query...")
 
-                # Create a fresh session for the retry
                 db.session.expire_all()
                 trusted_key = TrustedKey.query.filter_by(
                     user_id=user_id,
