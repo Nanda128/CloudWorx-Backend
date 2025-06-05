@@ -20,7 +20,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
 from app.docs.auth_docs import register_auth_models
-from app.models.file import File
+from app.models.file import File, FileDEK
+from app.models.share import FileShare
 from app.models.user import UserKEK, UserLogin
 from app.utils.tofu import calculate_key_fingerprint, verify_tofu_key
 from app.utils.token import token_required
@@ -533,14 +534,28 @@ class DeleteUser(Resource):
             current_app.logger.warning("Invalid password for user: %s", current_user.id)
             return {"message": "Invalid password!"}, 401
 
+        # Delete user's KEK
         kek = UserKEK.query.filter_by(user_id=current_user.id).first()
         if kek:
             db.session.delete(kek)
 
+        # Delete all shares involving this user (both as sharer and recipient)
+        shares_as_sharer = FileShare.query.filter_by(shared_by=current_user.id).all()
+        shares_as_recipient = FileShare.query.filter_by(shared_with=current_user.id).all()
+        for share in shares_as_sharer + shares_as_recipient:
+            db.session.delete(share)
+
+        # Delete user's files and their associated DEKs
         user_files = File.query.filter_by(created_by=current_user.id).all()
         for file in user_files:
+            # Delete file's DEK
+            dek = FileDEK.query.filter_by(file_id=file.file_id).first()
+            if dek:
+                db.session.delete(dek)
+            # Delete the file
             db.session.delete(file)
 
+        # Delete the user
         db.session.delete(user)
         db.session.commit()
 

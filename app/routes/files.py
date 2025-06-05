@@ -24,8 +24,15 @@ MAX_FILENAME_LENGTH = 255
 
 
 def allowed_file(filename: str) -> bool:
-    allowed_extensions = {"txt", "pdf", "png", "jpg", "jpeg", "gif", "doc", "docx", "xls", "xlsx"}
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed_extensions
+    allowed_extensions = {"txt", "pdf", "png", "jpg", "jpeg", "gif", "doc", "docx", "xls", "xlsx", "ppt", "pptx"}
+    if not filename or "." not in filename:
+        current_app.logger.warning("Filename missing or no extension: %s", filename)
+        return False
+    extension = filename.rsplit(".", 1)[1].lower()
+    is_allowed = extension in allowed_extensions
+    if not is_allowed:
+        current_app.logger.warning("File extension '%s' not allowed for file '%s'", extension, filename)
+    return is_allowed
 
 
 @files_ns.route("")
@@ -86,7 +93,7 @@ class FilesList(Resource):
                 iv_dek,
                 encrypted_dek,
                 error_response,
-            ) = validate_upload_request(request)
+            ) = validate_upload_request(request, current_user)
             if error_response:
                 return error_response
             file_id = str(uuid.uuid4())
@@ -202,14 +209,18 @@ class FileResource(Resource):
     def delete(self, current_user: UserLogin, file_name: str) -> tuple:
         """Delete a file and its associated DEK and any shares"""
         try:
-            file = File.query.filter_by(file_id=file_name, created_by=current_user.id).first()
+            file = File.query.filter_by(file_name=file_name, created_by=current_user.id).first()
             if not file:
                 current_app.logger.warning("File %s not found for user %s", file_name, current_user.id)
                 return {"message": "File not found or access denied"}, 404
-            share = FileShare.query.filter_by(file_id=file_name)
-            if not share:
-                current_app.logger.warning("No shares found for file %s", file_name)
+
+            shares = FileShare.query.filter_by(file_id=file.file_id).all()
+            for share in shares:
                 db.session.delete(share)
+
+            dek = FileDEK.query.filter_by(file_id=file.file_id).first()
+            if dek:
+                db.session.delete(dek)
 
             db.session.delete(file)
             db.session.commit()
@@ -238,7 +249,7 @@ class FileIdResolver(Resource):
         return {"file_id": file.file_id}, 200
 
 
-def validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any]:  # noqa: C901
+def validate_upload_request(request: Request, current_user: UserLogin) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any]:  # noqa: C901
     """Validate the upload request and extract file and DEK information from headers"""
     error_response = None
 
@@ -259,14 +270,26 @@ def validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, 
     if not file_name:
         current_app.logger.warning("Missing X-File-Name header")
         file_name = secure_filename(file.filename or "")
+
+    current_app.logger.info("Original filename: %s, Header filename: %s", file.filename, file_name)
+
     file_name = str(escape(file_name))
-    existing_file = File.query.filter_by(file_name=file_name).first()
-    if existing_file or len(file_name) > MAX_FILENAME_LENGTH:
-        error_response = ({"message": "A file with this name already exists or the filename's too long"}, 400)
-        current_app.logger.warning(
-            "File with name %s already exists or filename is too long",
-            file_name,
-        )
+    current_app.logger.info("Final processed filename: %s", file_name)
+
+    if not allowed_file(file_name):
+        error_response = ({"message": f"File type not allowed. Filename: {file_name}"}, 400)
+        current_app.logger.warning("File type not allowed for filename: %s", file_name)
+        return (file, file_name, None, None, None, None, None, error_response)
+
+    existing_file = File.query.filter_by(file_name=file_name, created_by=current_user.id).first()
+    if existing_file:
+        error_response = ({"message": f"A file with this name already exists: {file_name}"}, 400)
+        current_app.logger.warning("File with name %s already exists for user %s", file_name, current_user.id)
+        return (file, file_name, None, None, None, None, None, error_response)
+
+    if len(file_name) > MAX_FILENAME_LENGTH:
+        error_response = ({"message": f"Filename too long (max {MAX_FILENAME_LENGTH} characters): {file_name}"}, 400)
+        current_app.logger.warning("Filename too long: %s", file_name)
         return (file, file_name, None, None, None, None, None, error_response)
 
     iv_file = request.headers.get("X-IV-File")
@@ -283,22 +306,16 @@ def validate_upload_request(request: Request) -> tuple[Any, Any, Any, Any, Any, 
 
     if not iv_file:
         current_app.logger.warning("Missing IV for file encryption")
-        error_response = ({"message": "Missing IV for file encryption"}, 400)
-    elif not all([iv_dek, encrypted_dek]):
-        current_app.logger.warning("Missing DEK encryption data")
-        error_response = ({"message": "Missing DEK encryption data"}, 400)
-    elif not file or not allowed_file(file.filename or "") or not file_name or not iv_file:
-        current_app.logger.warning("%s", not file)
-        current_app.logger.warning("%s", not allowed_file(file.filename or ""))
-        current_app.logger.warning("Filename: %s", file.filename)
-        current_app.logger.warning("%s", not file_name)
-        current_app.logger.warning("%s", not iv_file)
-        error_response = ({"message": "Missing required fields for file information"}, 400)
-    elif not iv_dek or not encrypted_dek:
-        current_app.logger.warning("Missing required fields for DEK information")
-        error_response = ({"message": "Missing required fields for file DEK information"}, 400)
+        error_response = ({"message": "Missing IV for file encryption (X-IV-File header)"}, 400)
+    elif not iv_dek:
+        current_app.logger.warning("Missing IV for DEK encryption")
+        error_response = ({"message": "Missing IV for DEK encryption (X-IV-DEK header)"}, 400)
+    elif not encrypted_dek:
+        current_app.logger.warning("Missing encrypted DEK")
+        error_response = ({"message": "Missing encrypted DEK (X-Encrypted-DEK header)"}, 400)
 
     if error_response:
         return (file, file_name, iv_file, file_type, file_size, iv_dek, encrypted_dek, error_response)
 
+    current_app.logger.info("File validation successful for: %s", file_name)
     return (file, file_name, iv_file, file_type, file_size, iv_dek, encrypted_dek, None)

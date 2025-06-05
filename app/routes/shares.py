@@ -249,7 +249,7 @@ class FileShareResource(Resource):
                 file_id,
                 current_user.username,
             )
-            return {"shares": [], "count": 0}, 404
+            return {"message": "File not found or access denied"}, 404
 
         shares = FileShare.query.filter_by(file_id=file.file_id, shared_by=current_user.id).all()
         share_list = []
