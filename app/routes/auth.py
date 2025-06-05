@@ -537,7 +537,7 @@ class DeleteUser(Resource):
         if kek:
             db.session.delete(kek)
 
-        user_files = File.query.filter_by(user_id=current_user.id).all()
+        user_files = File.query.filter_by(created_by=current_user.id).all()
         for file in user_files:
             db.session.delete(file)
 

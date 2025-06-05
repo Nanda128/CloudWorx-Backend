@@ -6,15 +6,18 @@ from app import create_app
 
 logger = logging.getLogger(__name__)
 
-log_file = "app.log"
+log_file = os.environ.get("LOG_FILE", "app.log")
+log_level = getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper())
+log_rotation_days = int(os.environ.get("LOG_ROTATION_DAYS", "7"))
+
 file_handler = TimedRotatingFileHandler(
     log_file,
     when="D",
-    interval=7,
+    interval=log_rotation_days,
     backupCount=1,
     encoding="utf-8",
 )
-file_handler.setLevel(logging.INFO)
+file_handler.setLevel(log_level)
 
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -22,7 +25,7 @@ formatter = logging.Formatter(
 file_handler.setFormatter(formatter)
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=log_level,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         file_handler,
