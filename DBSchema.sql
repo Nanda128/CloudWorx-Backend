@@ -86,7 +86,7 @@ CREATE TABLE
         public_key TEXT NOT NULL,
         first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         last_verified TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        trust_status ENUM ('trusted', 'revoked', 'suspicious') DEFAULT 'trusted',
+        trust_status ENUM ('TRUSTED', 'REVOKED', 'SUSPICIOUS') DEFAULT 'TRUSTED',
         verification_count INT DEFAULT 1,
         FOREIGN KEY (user_id) REFERENCES user_login (id) ON DELETE CASCADE,
         UNIQUE KEY unique_user_key (user_id, key_fingerprint),

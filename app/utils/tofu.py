@@ -45,10 +45,15 @@ def fix_invalid_enum_values() -> None:
             text("UPDATE trusted_keys SET trust_status = 'SUSPICIOUS' WHERE trust_status = 'suspicious'"),
         )
 
+        db.session.commit()
         current_app.logger.info("Successfully fixed invalid enum values")
 
     except Exception:
         current_app.logger.exception("Failed to fix invalid enum values")
+        try:
+            db.session.rollback()
+        except Exception:
+            current_app.logger.exception("Failed to rollback after enum fix failure")
         raise
 
 
@@ -74,9 +79,10 @@ def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, Trust
             try:
                 current_app.logger.info("Attempting to fix invalid enum values...")
                 fix_invalid_enum_values()
-                db.session.commit()
                 current_app.logger.info("Database enum fix completed, retrying query...")
 
+                # Create a fresh session for the retry
+                db.session.expire_all()
                 trusted_key = TrustedKey.query.filter_by(
                     user_id=user_id,
                     key_fingerprint=fingerprint,
@@ -85,11 +91,6 @@ def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, Trust
 
             except Exception:
                 current_app.logger.exception("Failed to fix database enum values")
-                try:
-                    db.session.rollback()
-                except Exception:
-                    current_app.logger.exception("Failed to rollback database session")
-
                 return (
                     False,
                     "Database integrity error - please contact administrator",

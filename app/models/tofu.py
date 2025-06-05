@@ -6,9 +6,9 @@ from app import db
 
 
 class TrustStatus(Enum):
-    TRUSTED = "trusted"
-    REVOKED = "revoked"
-    SUSPICIOUS = "suspicious"
+    TRUSTED = "TRUSTED"
+    REVOKED = "REVOKED"
+    SUSPICIOUS = "SUSPICIOUS"
 
 
 class TrustedKey(db.Model):
