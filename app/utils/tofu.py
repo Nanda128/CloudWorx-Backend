@@ -42,22 +42,35 @@ def verify_tofu_key(user_id: str, public_key_pem: str) -> tuple[bool, str, Trust
             ).first()
         except (SQLAlchemyError, LookupError) as e:
             current_app.logger.warning(
-                "Database error loading trusted key for user %s: %s",
+                "Database error loading trusted key for user %s: %s (type: %s)",
                 user_id,
                 str(e),
+                type(e).__name__,
             )
             try:
+                current_app.logger.info("Attempting to fix invalid enum values...")
                 fix_invalid_enum_values()
                 db.session.commit()
+                current_app.logger.info("Database enum fix completed, retrying query...")
                 trusted_key = TrustedKey.query.filter_by(
                     user_id=user_id,
                     key_fingerprint=fingerprint,
                 ).first()
-            except (SQLAlchemyError, LookupError):
+                current_app.logger.info("Successfully retrieved trusted key after fix")
+            except (SQLAlchemyError, LookupError) as fix_error:
                 current_app.logger.exception(
-                    "Failed to fix database enum values",
+                    "Failed to fix database enum values.",
                 )
-                return False, "Database integrity error - please contact administrator", None
+                try:
+                    db.session.rollback()
+                except Exception:
+                    current_app.logger.exception("Failed to rollback database session")
+
+                return (
+                    False,
+                    f"Database integrity error - original: {type(e).__name__}, fix failed: {type(fix_error).__name__}",
+                    None,
+                )
 
         if trusted_key:
             current_app.logger.debug(
