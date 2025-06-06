@@ -475,7 +475,7 @@ class SharedFileDownload(Resource):
                 "shared_by_username": sender.username,
                 "encrypted_file": base64.b64encode(share.encrypted_file).decode(),
                 "nonce": base64.b64encode(share.nonce).decode(),
-                "ephemeral_public_key": base64.b64encode(share.ephemeral_public_key),
+                "ephemeral_public_key": share.ephemeral_public_key.hex(),
                 "sender_signature": base64.b64encode(share.sender_signature).decode(),
                 "sender_x25519_public_key": sender.public_key,
                 "sender_ed25519_public_key": sender.signing_public_key,
